@@ -1136,6 +1136,31 @@
             renderMonthlyGrid();
         }
 
+        // מידע על עסקת תשלומים עבור כינוי בחודש המוצג: מספר תשלום, יתרה ומספר תשלומים שנותרו
+        function getInstallmentInfo(alias) {
+            const currentKey = currentViewYear * 12 + currentViewMonth;
+            const instTxs = allTransactions.filter(tx => tx.type === 'תשלומים' && !tx.isRecurring && getTxAlias(tx) === alias);
+            let info = null;
+            for (const tx of instTxs) {
+                if (tx.year * 12 + tx.month !== currentKey) continue;
+                const m = (tx.displayBusiness || '').match(/\((\d+)\/(\d+)\)\s*$/);
+                if (!m) continue;
+                info = { n: parseInt(m[1], 10), total: parseInt(m[2], 10), remainingAmount: 0, remainingCount: 0 };
+                break;
+            }
+            if (!info) return null;
+            instTxs.forEach(tx => {
+                if (tx.year * 12 + tx.month > currentKey) {
+                    const m = (tx.displayBusiness || '').match(/\((\d+)\/(\d+)\)\s*$/);
+                    if (m && parseInt(m[2], 10) === info.total) {
+                        info.remainingAmount += tx.amount;
+                        info.remainingCount += 1;
+                    }
+                }
+            });
+            return info;
+        }
+
         function calculateMonthlyData() {
             let reverseAliasMap = {};
             for (let main in categoriesData) {
@@ -1257,9 +1282,12 @@
                     const recHint = rec ? `<span style="font-size:9px; background:rgba(10,132,255,0.2); color:var(--accent-blue); padding:2px 5px; border-radius:4px; margin-left:6px;">קבוע</span> ` : '';
 
                     if (aCur > 0) {
+                        const inst = getInstallmentInfo(alias);
+                        const instHint = inst ? `<span style="font-size:9px; background:var(--accent-blue); color:white; padding:2px 5px; border-radius:4px; margin-left:6px;">תשלום ${inst.n}/${inst.total}</span> ` : '';
+                        const instLine = inst ? `<div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">יתרה: ₪${inst.remainingAmount.toLocaleString(undefined, {maximumFractionDigits:0})} · נותרו ${inst.remainingCount} תשלומים</div>` : '';
                         html += `
                         <li style="display:flex; justify-content:space-between; padding:10px 15px; border-bottom:0.5px solid rgba(255,255,255,0.05); background:rgba(0,0,0,0.2);">
-                            <span>${recHint}${alias}${recLabel}</span>
+                            <div><span>${recHint}${instHint}${alias}${recLabel}</span>${instLine}</div>
                             <span style="font-weight:600;">₪${aCur.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
                         </li>`;
                     } else {
