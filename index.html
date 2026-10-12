@@ -547,8 +547,9 @@
         };
 
         const defaultRecurring = [
-            { id: 'rec-arnona', alias: 'ארנונה', amount: 1200, method: 'אשראי', type: 'קבועה' },
+            { id: 'rec-arnona', alias: 'ארנונה', amount: 600, method: 'אשראי', type: 'קבועה' },
             { id: 'rec-vaad', alias: 'ועד בית', amount: 270, method: 'העברה בנקאית', type: 'קבועה' },
+            { id: 'rec-cellcom', alias: 'סלולר+אינטרנט+TV (סלקום)', amount: 179, method: 'הוראת קבע', type: 'קבועה' },
             { id: 'rec-menora-health', alias: 'ביטוח בריאות - מנורה', amount: 188.25, method: 'אשראי', type: 'קבועה' },
             { id: 'rec-menora-life', alias: 'ביטוח חיים - מנורה', amount: 41.1, method: 'דיירקט', type: 'קבועה' },
             { id: 'rec-office365', alias: 'Office365', amount: 10, method: 'דיירקט', type: 'קבועה' },
@@ -557,7 +558,7 @@
             { id: 'rec-ravkav', alias: 'טעינת רב קו', amount: 161.5, method: 'אשראי', type: 'קבועה' }
         ];
         // מעלים את הגרסה כשמשנים את ברירות המחדל כדי שהן ימוזגו פעם אחת לרשימה השמורה בטלפון
-        const RECURRING_DEFAULTS_VERSION = '2';
+        const RECURRING_DEFAULTS_VERSION = '3';
 
         function loadRecurring() {
             let stored = null;
