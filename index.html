@@ -149,6 +149,22 @@
             </div>
         </div>
 
+        <!-- קוביה: תחזית ותשלומים -->
+        <div class="glass-card" onclick="openForecast()">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="background:var(--accent-orange); width:36px; height:36px; border-radius:12px; display:flex; justify-content:center; align-items:center;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+                    </div>
+                    <div>
+                        <h3 style="margin:0; font-size:18px;">תחזית ותשלומים</h3>
+                        <p style="margin:4px 0 0; font-size:13px; color:var(--text-secondary);">חצי שנה קדימה ויתרות תשלומים</p>
+                    </div>
+                </div>
+                <span style="color:var(--text-secondary);">❯</span>
+            </div>
+        </div>
+
         <div class="glass-card" onclick="showDetails('קבועה')">
             <div class="budget-row">
                 <div class="budget-info">
@@ -209,6 +225,16 @@
             </div>
         </div>
 
+        <div class="glass-card" onclick="openUnclassified()">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <h3 style="margin:0; font-size:18px;">עסקאות לא מסווגות</h3>
+                    <p id="unclassifiedCount" style="margin:4px 0 0; font-size:13px; color:var(--text-secondary);">בודק...</p>
+                </div>
+                <span style="color:var(--text-secondary);">❯</span>
+            </div>
+        </div>
+
         <div class="glass-card" onclick="document.getElementById('recurringModal').classList.remove('hidden'); renderRecurringManager();">
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div>
@@ -257,6 +283,25 @@
             <div id="aliasesList" class="mgmt-list"></div>
             <button class="btn-small" style="margin-bottom:15px; width:100%; background:rgba(255,255,255,0.2);" onclick="addAliasMapping()">+ הוסף כינוי חדש למילון</button>
             <button class="action-btn" onclick="closeModal('aliasesModal')">חזור</button>
+        </div>
+    </div>
+
+    <!-- מודל תחזית ותשלומים -->
+    <div id="forecastModal" class="modal-overlay hidden">
+        <div class="modal-content glass-card" style="height:85vh;">
+            <h3 style="margin-top:0; text-align:center;">תחזית ותשלומים</h3>
+            <div id="forecastBody" class="mgmt-list"></div>
+            <button class="action-btn" onclick="closeModal('forecastModal')">סגור</button>
+        </div>
+    </div>
+
+    <!-- מודל עסקאות לא מסווגות -->
+    <div id="unclassifiedModal" class="modal-overlay hidden">
+        <div class="modal-content glass-card" style="height:85vh;">
+            <h3 style="margin-top:0; text-align:center;">עסקאות לא מסווגות</h3>
+            <p style="font-size:12px; color:var(--text-secondary); text-align:center; margin-bottom:10px; margin-top:-10px;">בתי עסק שאינם משויכים לאף קטגוריה, ולכן לא נספרים בהתנהלות החודשית.</p>
+            <div id="unclassifiedList" class="mgmt-list"></div>
+            <button class="action-btn" onclick="closeModal('unclassifiedModal')">סגור</button>
         </div>
     </div>
 
@@ -505,8 +550,28 @@
         let categoriesData = JSON.parse(localStorage.getItem('smartbudget_categories')) || defaultCategories;
         let recurringMonthly = loadRecurring();
 
+        // הרשימה של ההוצאות הקבועות נשמרת בענן בתוך אובייקט הקטגוריות תחת מפתח שמור (__recurring)
+        function buildCategoriesPayload() {
+            return JSON.stringify({ ...categoriesData, __recurring: recurringMonthly });
+        }
+
+        function pushConfigToCloud() {
+            const payload = {
+                action: 'save_config',
+                aliases: JSON.stringify(businessAliases),
+                categories: buildCategoriesPayload()
+            };
+            fetch(scriptPostUrl, { 
+                method: 'POST', 
+                mode: 'no-cors', 
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+                body: JSON.stringify(payload) 
+            });
+        }
+
         function saveRecurring() {
             localStorage.setItem('smartbudget_recurring', JSON.stringify(recurringMonthly));
+            pushConfigToCloud();
             processAndRender();
         }
 
@@ -517,17 +582,7 @@
             localStorage.setItem('smartbudget_recurring', JSON.stringify(recurringMonthly));
             
             // גיבוי ושמירה בענן של גוגל!
-            const payload = {
-                action: 'save_config',
-                aliases: JSON.stringify(businessAliases),
-                categories: JSON.stringify(categoriesData)
-            };
-            fetch(scriptPostUrl, { 
-                method: 'POST', 
-                mode: 'no-cors', 
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-                body: JSON.stringify(payload) 
-            });
+            pushConfigToCloud();
             
             fetchAndRenderData();
         }
@@ -537,12 +592,25 @@
             try {
                 const res = await fetch(scriptPostUrl);
                 const config = await res.json();
+                let cloudHasRecurring = false;
                 if (config.aliases) businessAliases = JSON.parse(config.aliases);
-                if (config.categories) categoriesData = JSON.parse(config.categories);
+                if (config.categories) {
+                    const cats = JSON.parse(config.categories);
+                    if (Array.isArray(cats.__recurring)) {
+                        recurringMonthly = cats.__recurring;
+                        cloudHasRecurring = true;
+                        localStorage.setItem('smartbudget_recurring', JSON.stringify(recurringMonthly));
+                    }
+                    delete cats.__recurring;
+                    categoriesData = cats;
+                }
                 
                 // עדכון הזיכרון המקומי לנתונים מהענן
                 localStorage.setItem('smartbudget_aliases', JSON.stringify(businessAliases));
                 localStorage.setItem('smartbudget_categories', JSON.stringify(categoriesData));
+
+                // הפעם הראשונה: הענן עוד לא מכיר את ההוצאות הקבועות - מעלים אותן
+                if (!cloudHasRecurring) pushConfigToCloud();
             } catch (error) {
                 console.log("עובד על נתונים מקומיים (טוען...)");
             }
@@ -607,9 +675,6 @@
                         let type = cols[3].trim();
                         const method = cols[4] ? cols[4].trim() : 'דיירקט'; 
                         
-                        if (rawBusiness.includes('ביטוח') || rawBusiness.includes('קבועה') || type === 'תשלומים') {
-                            type = 'תשלומים';
-                        }
                         
                         const parts = dateStr.includes('.') ? dateStr.split('.') : dateStr.split('-');
                         if (parts.length === 3) {
@@ -647,7 +712,7 @@
         }
 
         function getTxAlias(tx) {
-            return (tx.displayBusiness || '').split(' (')[0];
+            return (tx.displayBusiness || '').replace(/ \(\d+\/\d+\)\s*$/, '');
         }
 
         function methodShortLabel(method) {
@@ -663,7 +728,7 @@
 
             const now = new Date();
             let startKey = (now.getFullYear() * 12 + (now.getMonth() + 1)) - 24;
-            let endKey = now.getFullYear() * 12 + (now.getMonth() + 1) + 3;
+            let endKey = now.getFullYear() * 12 + (now.getMonth() + 1) + 12;
             const viewKey = currentViewYear * 12 + currentViewMonth;
             if (viewKey < startKey) startKey = viewKey;
             if (viewKey > endKey) endKey = viewKey;
@@ -750,6 +815,7 @@
                     if(variablePercent > 80) document.getElementById('variableBar').classList.add('warning');
                     else document.getElementById('variableBar').classList.remove('warning');
                 }, 50);
+                updateUnclassifiedBadge();
             } catch(e) {}
         }
 
@@ -995,7 +1061,7 @@
             } else {
                 const grouped = {};
                 filtered.forEach(tx => {
-                    const baseBusinessName = tx.displayBusiness.split(' (')[0];
+                    const baseBusinessName = getTxAlias(tx);
                     if(!grouped[baseBusinessName]) {
                         grouped[baseBusinessName] = { total: 0, count: 0, txs: [], hasInstallments: false };
                     }
@@ -1219,7 +1285,7 @@
             allTransactions.forEach(tx => {
                 if (tx.type === 'הכנסה') return;
                 
-                let baseAlias = tx.displayBusiness.split(' (')[0];
+                let baseAlias = getTxAlias(tx);
                 let mapping = reverseAliasMap[baseAlias];
                 
                 let txKey = tx.year * 12 + tx.month;
@@ -1478,15 +1544,6 @@
                     d = new Date(today.getFullYear(), today.getMonth() + i, today.getDate());
                 }
 
-                let dateStr = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth()+1).padStart(2, '0')}.${String(d.getFullYear()).slice(-2)}`;
-                let instBusiness = installments > 1 ? `${business} (${i+1}/${installments})` : business;
-                
-                let baseInstAmount = parseFloat(amountPerInst.toFixed(2));
-                let instAmount = (i === installments - 1) ? parseFloat((totalAmount - (baseInstAmount * (installments - 1))).toFixed(2)) : baseInstAmount;
-                
-                const payload = { action: 'add', date: dateStr, business: instBusiness, amount: instAmount, type: type, method: method };
-                fetch(scriptPostUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
-                
                 let billingMonth = d.getMonth() + 1;
                 let billingYear = d.getFullYear();
                 
@@ -1496,6 +1553,19 @@
                         if (billingMonth > 12) { billingMonth = 1; billingYear += 1; }
                     }
                 }
+
+                let dateStr = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth()+1).padStart(2, '0')}.${String(d.getFullYear()).slice(-2)}`;
+                // תשלומים באשראי: שומרים את התאריך כ-10 לחודש החיוב, כך שהחודש זהה גם אחרי טעינה מחדש מהגיליון
+                if (type === 'תשלומים' && method === 'אשראי') {
+                    dateStr = `10.${String(billingMonth).padStart(2, '0')}.${String(billingYear).slice(-2)}`;
+                }
+                let instBusiness = installments > 1 ? `${business} (${i+1}/${installments})` : business;
+                
+                let baseInstAmount = parseFloat(amountPerInst.toFixed(2));
+                let instAmount = (i === installments - 1) ? parseFloat((totalAmount - (baseInstAmount * (installments - 1))).toFixed(2)) : baseInstAmount;
+                
+                const payload = { action: 'add', date: dateStr, business: instBusiness, amount: instAmount, type: type, method: method };
+                fetch(scriptPostUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
 
                 if (i === 0) {
                     firstBillingMonth = billingMonth;
@@ -1518,6 +1588,184 @@
             currentViewMonth = firstBillingMonth || (new Date().getMonth() + 1);
             currentViewYear = firstBillingYear || new Date().getFullYear();
             processAndRender();
+        }
+
+        // ==========================================
+        //         תחזית קדימה ותשלומים פעילים
+        // ==========================================
+        function escHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+        function fmtMoney(n) { return '₪' + Math.round(n).toLocaleString(); }
+        function nowMonthKey() { const n = new Date(); return n.getFullYear() * 12 + (n.getMonth() + 1); }
+        function keyLabel(key) {
+            const y = Math.floor((key - 1) / 12);
+            const m = ((key - 1) % 12) + 1;
+            return `${monthNames[m - 1]} ${y}`;
+        }
+
+        // כל עסקאות התשלומים הפעילות: תשלום נוכחי, יתרה, חודש סיום
+        function getInstallmentGroups() {
+            const nowKey = nowMonthKey();
+            const groups = {};
+            allTransactions.forEach(tx => {
+                if (tx.type !== 'תשלומים' || tx.isRecurring) return;
+                const m = (tx.displayBusiness || '').match(/\((\d+)\/(\d+)\)\s*$/);
+                if (!m) return;
+                const n = parseInt(m[1], 10), total = parseInt(m[2], 10);
+                if (total > 60) return; // מתעלמים משורות חריגות (למשל 999 תשלומים)
+                const alias = getTxAlias(tx);
+                const gk = alias + '|' + total;
+                if (!groups[gk]) groups[gk] = { alias, total, payments: [] };
+                groups[gk].payments.push({ n, key: tx.year * 12 + tx.month, amount: tx.amount });
+            });
+            const result = [];
+            Object.values(groups).forEach(g => {
+                g.payments.sort((a, b) => a.key - b.key);
+                const upcoming = g.payments.filter(p => p.key >= nowKey);
+                if (!upcoming.length) return; // העסקה הסתיימה
+                const current = upcoming[0];
+                const after = upcoming.filter(p => p.key > current.key);
+                const last = g.payments[g.payments.length - 1];
+                result.push({
+                    alias: g.alias, total: g.total, n: current.n, amount: current.amount,
+                    remainingAmount: after.reduce((s, p) => s + p.amount, 0),
+                    remainingCount: after.length, endKey: last.key
+                });
+            });
+            return result.sort((a, b) => a.endKey - b.endKey);
+        }
+
+        window.openForecast = function() {
+            const nowKey = nowMonthKey();
+            const buckets = {};
+            for (let i = 0; i < 6; i++) buckets[nowKey + i] = { fixed: 0, inst: 0, other: 0 };
+            allTransactions.forEach(tx => {
+                if (tx.type === 'הכנסה') return;
+                const b = buckets[tx.year * 12 + tx.month];
+                if (!b) return;
+                if (tx.isRecurring) b.fixed += tx.amount;
+                else if (tx.type === 'תשלומים') b.inst += tx.amount;
+                else b.other += tx.amount;
+            });
+            const keys = Object.keys(buckets).map(Number);
+            const maxTotal = Math.max(1, ...keys.map(k => buckets[k].fixed + buckets[k].inst + buckets[k].other));
+
+            let html = `<div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">הוצאות ידועות לכל חודש: קבועות חודשיות, תשלומים ושאר עסקאות שכבר קיימות.</div>`;
+            keys.forEach((k, idx) => {
+                const b = buckets[k];
+                const total = b.fixed + b.inst + b.other;
+                const pct = Math.round((total / maxTotal) * 100);
+                html += `
+                <div class="mgmt-item">
+                    <div class="mgmt-title"><span>${keyLabel(k)}${idx === 0 ? ' (החודש)' : ''}</span><span>${fmtMoney(total)}</span></div>
+                    <div class="progress-bar" style="margin-top:8px;"><div class="progress-fill" style="width:${pct}%;"></div></div>
+                    <div style="margin-top:8px; font-size:12px; color:var(--text-secondary); display:flex; justify-content:space-between; gap:6px;">
+                        <span>קבועות: ${fmtMoney(b.fixed)}</span>
+                        <span>תשלומים: ${fmtMoney(b.inst)}</span>
+                        <span>שאר: ${fmtMoney(b.other)}</span>
+                    </div>
+                </div>`;
+            });
+
+            const groups = getInstallmentGroups();
+            html += `<h3 style="margin:18px 0 8px; font-size:16px;">תשלומים פעילים</h3>`;
+            if (!groups.length) {
+                html += `<p style="text-align:center; color:var(--text-secondary);">אין עסקאות תשלומים פעילות</p>`;
+            } else {
+                groups.forEach(g => {
+                    html += `
+                    <div class="mgmt-item">
+                        <div class="mgmt-title">
+                            <span>${escHtml(g.alias)}</span>
+                            <span style="font-size:10px; background:var(--accent-blue); color:white; padding:3px 6px; border-radius:6px;">תשלום ${g.n}/${g.total}</span>
+                        </div>
+                        <div style="margin-top:8px; font-size:13px;">${fmtMoney(g.amount)} לחודש · יתרה ${fmtMoney(g.remainingAmount)} (${g.remainingCount} תשלומים)</div>
+                        <div style="margin-top:4px; font-size:12px; color:var(--text-secondary);">מסתיים ב${keyLabel(g.endKey)} · מתפנים ${fmtMoney(g.amount)} לחודש</div>
+                    </div>`;
+                });
+                const totalMonthly = groups.reduce((s, g) => s + g.amount, 0);
+                const totalBalance = groups.reduce((s, g) => s + g.remainingAmount, 0);
+                html += `<div style="text-align:center; font-size:12px; color:var(--text-secondary); margin-top:6px;">סה״כ תשלומים חודשיים: ${fmtMoney(totalMonthly)} · יתרה כוללת אחרי החודש הנוכחי: ${fmtMoney(totalBalance)}</div>`;
+            }
+            document.getElementById('forecastBody').innerHTML = html;
+            document.getElementById('forecastModal').classList.remove('hidden');
+        }
+
+        // ==========================================
+        //         עסקאות לא מסווגות
+        // ==========================================
+        function getUnclassified() {
+            const known = new Set();
+            for (const main in categoriesData) {
+                for (const sub in categoriesData[main]) {
+                    categoriesData[main][sub].forEach(a => known.add(a));
+                }
+            }
+            const map = {};
+            allTransactions.forEach(tx => {
+                if (tx.type === 'הכנסה') return;
+                const alias = getTxAlias(tx);
+                if (!alias || known.has(alias)) return;
+                if (!map[alias]) map[alias] = { alias, total: 0, count: 0 };
+                map[alias].total += tx.amount;
+                map[alias].count += 1;
+            });
+            return Object.values(map).sort((a, b) => b.total - a.total);
+        }
+
+        function updateUnclassifiedBadge() {
+            const el = document.getElementById('unclassifiedCount');
+            if (!el) return;
+            const n = getUnclassified().length;
+            el.innerText = n ? `${n} עסקים ממתינים לשיוך` : 'הכל מסווג';
+        }
+
+        window.renderUnclassified = function() {
+            const items = getUnclassified();
+            window._unclassifiedItems = items;
+            const mains = Object.keys(categoriesData).filter(m => m !== 'הכנסות' && m !== 'הכנסה');
+            const mainOptions = `<option value="">-- קטגוריה ראשית --</option>` + mains.map(m => `<option value="${escHtml(m)}">${escHtml(m)}</option>`).join('');
+            let html = '';
+            if (!items.length) {
+                html = `<p style="text-align:center; color:var(--text-secondary);">כל העסקים משויכים לקטגוריה 👌</p>`;
+            }
+            items.forEach((it, i) => {
+                html += `
+                <div class="mgmt-item">
+                    <div class="mgmt-title"><span>${escHtml(it.alias)}</span><span style="font-size:13px;">${fmtMoney(it.total)}</span></div>
+                    <div style="font-size:12px; color:var(--text-secondary); margin:4px 0 8px;">${it.count} עסקאות</div>
+                    <select id="uc-main-${i}" class="ios-input" style="appearance:none; background:rgba(255,255,255,0.1); margin-bottom:6px;" onchange="ucUpdateSub(${i})">${mainOptions}</select>
+                    <select id="uc-sub-${i}" class="ios-input" style="appearance:none; background:rgba(255,255,255,0.1); margin-bottom:6px; display:none;"></select>
+                    <button class="btn-small" style="width:100%;" onclick="ucAssign(${i})">שייך</button>
+                </div>`;
+            });
+            document.getElementById('unclassifiedList').innerHTML = html;
+        }
+
+        window.openUnclassified = function() {
+            renderUnclassified();
+            document.getElementById('unclassifiedModal').classList.remove('hidden');
+        }
+
+        window.ucUpdateSub = function(i) {
+            const main = document.getElementById(`uc-main-${i}`).value;
+            const subSel = document.getElementById(`uc-sub-${i}`);
+            if (!main) { subSel.style.display = 'none'; return; }
+            subSel.innerHTML = `<option value="">-- תת-קטגוריה --</option>` + Object.keys(categoriesData[main]).map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+            subSel.style.display = 'block';
+        }
+
+        window.ucAssign = function(i) {
+            const item = (window._unclassifiedItems || [])[i];
+            if (!item) return;
+            const main = document.getElementById(`uc-main-${i}`).value;
+            const sub = document.getElementById(`uc-sub-${i}`).value;
+            if (!main || !sub) { alert("נא לבחור קטגוריה ראשית ותת-קטגוריה"); return; }
+            categoriesData[main][sub].push(item.alias);
+            saveConfig();
+            renderUnclassified();
+            updateUnclassifiedBadge();
         }
 
         async function initApp() {
