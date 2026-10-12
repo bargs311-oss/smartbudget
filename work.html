@@ -638,6 +638,7 @@
             }
             shifts = shifts.filter(s => s.id !== editingId);
             localStorage.setItem('shiftsHistory', JSON.stringify(shifts));
+            markShiftDeleted(editingId);
         }
 
         saveShiftLog(type, startTime, endTime, totalHours, totalPay, sickDayNum, isWeekend);
@@ -647,8 +648,10 @@
 
     function saveShiftLog(type, start, end, hours, pay, sickDayNum = 0, isWeekend = false) {
         let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+        const newId = Date.now();
+        unmarkShiftDeleted(newId);
         shifts.push({
-            id: Date.now(), type, sickDayNum,
+            id: newId, type, sickDayNum,
             date: start.toLocaleDateString('he-IL'),
             monthKey: start.getFullYear() + "-" + String(start.getMonth() + 1).padStart(2, '0'),
             start: start.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}),
@@ -680,9 +683,12 @@
                  localStorage.setItem('sickBalance', (bal + 1).toFixed(2));
             }
 
-            localStorage.setItem('shiftsHistory', JSON.stringify(shifts.filter(s => s.id !== id)));
-            syncWorkDataToCloud();
-            populateMonthSelector(); renderLog();
+            markShiftDeleted(id);
+            const remainingShifts = shifts.filter(s => s.id !== id);
+            localStorage.setItem('shiftsHistory', JSON.stringify(remainingShifts));
+            syncWorkDataToCloud(true);
+            populateMonthSelector();
+            renderLog();
         }
     }
 
@@ -742,20 +748,83 @@
         if (color) el.style.color = color;
     }
 
-    function syncSalaryToCloud(monthKey, net) {
-        syncWorkDataToCloud(monthKey, net);
+    function getDeletedShiftIds() {
+        try {
+            return JSON.parse(localStorage.getItem('deletedShiftIds') || '[]').map(String);
+        } catch(e) {
+            return [];
+        }
     }
 
-    function syncWorkDataToCloud(immediateMonthKey, immediateNet) {
+    function markShiftDeleted(id) {
+        if (!id) return;
+        const strId = String(id);
+        const delIds = getDeletedShiftIds();
+        if (!delIds.includes(strId)) {
+            delIds.push(strId);
+            if (delIds.length > 1000) delIds.splice(0, delIds.length - 1000);
+            localStorage.setItem('deletedShiftIds', JSON.stringify(delIds));
+        }
+    }
+
+    function unmarkShiftDeleted(id) {
+        if (!id) return;
+        const strId = String(id);
+        const delIds = getDeletedShiftIds().filter(d => d !== strId);
+        localStorage.setItem('deletedShiftIds', JSON.stringify(delIds));
+    }
+
+    function syncSalaryToCloud(monthKey, net) {
+        syncWorkDataToCloud(false, monthKey, net);
+    }
+
+    function syncWorkDataToCloud(immediate, immediateMonthKey, immediateNet) {
+        let isImmediate = false;
+        let mKey = immediateMonthKey;
+        let mNet = immediateNet;
+
+        if (typeof immediate === 'string') {
+            mKey = immediate;
+            mNet = immediateMonthKey;
+            isImmediate = false;
+        } else if (immediate === true) {
+            isImmediate = true;
+        }
+
         clearTimeout(syncCloudTimer);
         setSyncStatus('☁️ מסנכרן...', '#ff9500');
-        syncCloudTimer = setTimeout(async () => {
+
+        const doSync = async () => {
             try {
                 const res = await fetch(scriptPostUrl);
                 const cfg = await res.json();
                 const cats = JSON.parse(cfg.categories || '{}');
                 
-                const shifts = JSON.parse(localStorage.getItem('shiftsHistory') || '[]');
+                const localDeleted = getDeletedShiftIds();
+                const cloudDeleted = (cats.__shiftsData && Array.isArray(cats.__shiftsData.deletedShiftIds))
+                    ? cats.__shiftsData.deletedShiftIds.map(String)
+                    : [];
+                const allDeletedSet = new Set([...localDeleted, ...cloudDeleted]);
+                const allDeletedArr = Array.from(allDeletedSet);
+                localStorage.setItem('deletedShiftIds', JSON.stringify(allDeletedArr.slice(-1000)));
+
+                let localShifts = (JSON.parse(localStorage.getItem('shiftsHistory') || '[]'))
+                    .filter(s => s && s.id && !allDeletedSet.has(String(s.id)));
+                
+                let cloudShifts = [];
+                if (cats.__shiftsData && Array.isArray(cats.__shiftsData.shiftsHistory)) {
+                    cloudShifts = cats.__shiftsData.shiftsHistory
+                        .filter(s => s && s.id && !allDeletedSet.has(String(s.id)));
+                }
+
+                const shiftMap = new Map();
+                cloudShifts.forEach(s => shiftMap.set(String(s.id), s));
+                localShifts.forEach(s => shiftMap.set(String(s.id), s));
+                const mergedShifts = Array.from(shiftMap.values());
+                mergedShifts.sort((a, b) => new Date(a.date.split('.').reverse().join('-') + 'T' + (a.start || '00:00')) - new Date(b.date.split('.').reverse().join('-') + 'T' + (b.start || '00:00')));
+
+                localStorage.setItem('shiftsHistory', JSON.stringify(mergedShifts));
+
                 const bonuses = {};
                 for (let i = 0; i < localStorage.length; i++) {
                     let k = localStorage.key(i);
@@ -770,25 +839,16 @@
                     bonuses: bonuses
                 };
 
-                let cloudShifts = [];
-                if (cats.__shiftsData && Array.isArray(cats.__shiftsData.shiftsHistory)) {
-                    cloudShifts = cats.__shiftsData.shiftsHistory;
-                }
-                const shiftMap = new Map();
-                cloudShifts.forEach(s => shiftMap.set(String(s.id), s));
-                shifts.forEach(s => shiftMap.set(String(s.id), s));
-                const mergedShifts = Array.from(shiftMap.values());
-                mergedShifts.sort((a, b) => new Date(a.date.split('.').reverse().join('-') + 'T' + (a.start || '00:00')) - new Date(b.date.split('.').reverse().join('-') + 'T' + (b.start || '00:00')));
-
                 cats.__shiftsData = {
                     shiftsHistory: mergedShifts,
+                    deletedShiftIds: allDeletedArr.slice(-1000),
                     settings: settings,
                     updatedAt: Date.now()
                 };
 
-                if (immediateMonthKey && immediateNet !== undefined) {
+                if (mKey && mNet !== undefined) {
                     if (!cats.__liveSalaries) cats.__liveSalaries = {};
-                    cats.__liveSalaries[immediateMonthKey] = Math.round(immediateNet);
+                    cats.__liveSalaries[mKey] = Math.round(mNet);
                 }
 
                 const payload = {
@@ -807,7 +867,13 @@
                 console.warn('Sync failed', e);
                 setSyncStatus('☁️ לא מקוון', '#8e8e93');
             }
-        }, 1200);
+        };
+
+        if (isImmediate) {
+            doSync();
+        } else {
+            syncCloudTimer = setTimeout(doSync, 1200);
+        }
     }
 
     async function loadWorkDataFromCloud() {
@@ -819,8 +885,18 @@
             
             let changed = false;
             if (cats.__shiftsData) {
-                const cloudShifts = Array.isArray(cats.__shiftsData.shiftsHistory) ? cats.__shiftsData.shiftsHistory : [];
-                const localShifts = JSON.parse(localStorage.getItem('shiftsHistory') || '[]');
+                const localDeleted = getDeletedShiftIds();
+                const cloudDeleted = Array.isArray(cats.__shiftsData.deletedShiftIds)
+                    ? cats.__shiftsData.deletedShiftIds.map(String)
+                    : [];
+                const allDeletedSet = new Set([...localDeleted, ...cloudDeleted]);
+                const allDeletedArr = Array.from(allDeletedSet);
+                localStorage.setItem('deletedShiftIds', JSON.stringify(allDeletedArr.slice(-1000)));
+
+                const cloudShifts = (Array.isArray(cats.__shiftsData.shiftsHistory) ? cats.__shiftsData.shiftsHistory : [])
+                    .filter(s => s && s.id && !allDeletedSet.has(String(s.id)));
+                const localShifts = (JSON.parse(localStorage.getItem('shiftsHistory') || '[]'))
+                    .filter(s => s && s.id && !allDeletedSet.has(String(s.id)));
 
                 const shiftMap = new Map();
                 cloudShifts.forEach(s => shiftMap.set(String(s.id), s));
@@ -828,7 +904,8 @@
                 const mergedShifts = Array.from(shiftMap.values());
                 mergedShifts.sort((a, b) => new Date(a.date.split('.').reverse().join('-') + 'T' + (a.start || '00:00')) - new Date(b.date.split('.').reverse().join('-') + 'T' + (b.start || '00:00')));
 
-                if (mergedShifts.length > 0 && JSON.stringify(mergedShifts) !== JSON.stringify(localShifts)) {
+                const curLocalRaw = JSON.parse(localStorage.getItem('shiftsHistory') || '[]');
+                if (JSON.stringify(mergedShifts) !== JSON.stringify(curLocalRaw)) {
                     localStorage.setItem('shiftsHistory', JSON.stringify(mergedShifts));
                     changed = true;
                 }
@@ -847,13 +924,16 @@
                     }
                 }
 
-                if (localShifts.length > cloudShifts.length) {
-                    syncWorkDataToCloud();
+                const cloudHasDeleted = (Array.isArray(cats.__shiftsData.shiftsHistory)) &&
+                    cats.__shiftsData.shiftsHistory.some(s => s && s.id && allDeletedSet.has(String(s.id)));
+
+                if (cloudHasDeleted || localDeleted.length > cloudDeleted.length) {
+                    syncWorkDataToCloud(true);
                 }
             } else {
                 const localShifts = JSON.parse(localStorage.getItem('shiftsHistory') || '[]');
                 if (localShifts.length > 0) {
-                    syncWorkDataToCloud();
+                    syncWorkDataToCloud(true);
                 }
             }
 
@@ -901,7 +981,10 @@
         if (!raw) return;
         try {
             const data = JSON.parse(raw);
-            if (data.shiftsHistory) localStorage.setItem('shiftsHistory', JSON.stringify(data.shiftsHistory));
+            if (data.shiftsHistory) {
+                localStorage.setItem('shiftsHistory', JSON.stringify(data.shiftsHistory));
+                localStorage.setItem('deletedShiftIds', '[]');
+            }
             if (data.hourlyWage) localStorage.setItem('hourlyWage', data.hourlyWage);
             if (data.travelExp) localStorage.setItem('travelExp', data.travelExp);
             if (data.vacationBalance) localStorage.setItem('vacationBalance', data.vacationBalance);
