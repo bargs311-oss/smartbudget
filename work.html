@@ -31,7 +31,8 @@
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
             background-color: var(--ios-bg); 
-            padding: 12px; 
+            padding: max(16px, env(safe-area-inset-top)) 12px max(24px, env(safe-area-inset-bottom)) 12px; 
+            padding-top: max(24px, calc(env(safe-area-inset-top) + 12px));
             text-align: center; 
             color: #1c1c1e; 
             margin: 0; 
@@ -135,15 +136,47 @@
         .calc-summary-box { background: #fff; border: 1px solid var(--ios-border); padding: 14px; border-radius: 14px; text-align: right; margin-top:10px; box-shadow: 0 4px 12px rgba(0,0,0,0.03);}
         
         .custom-warning-icon { display: inline-flex; align-items: center; justify-content: center; margin-left: 6px; vertical-align: middle; }
+        
+        .nav-back-pill {
+            color: var(--ios-blue);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 122, 255, 0.1);
+            padding: 8px 14px;
+            border-radius: 20px;
+            -webkit-tap-highlight-color: transparent;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .nav-back-pill:active {
+            background: rgba(0, 122, 255, 0.2);
+            transform: scale(0.97);
+        }
+        .sync-badge {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--ios-gray-text);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #f2f2f7;
+            padding: 4px 10px;
+            border-radius: 12px;
+        }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <a href="index.html" style="color:var(--ios-blue); text-decoration:none; font-size:14px; font-weight:600; display:inline-flex; align-items:center; gap:4px;">
-            <span>‹</span> חזרה לתקציב חכם (SmartBudget)
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <a href="index.html" class="nav-back-pill">
+            <span style="font-size:18px; line-height:1; font-weight:700;">‹</span>
+            <span>חזרה לתקציב חכם</span>
         </a>
+        <span id="cloudSyncStatus" class="sync-badge" title="סנכרון ענן פעיל">☁️ מסונכרן</span>
     </div>
     <h1>מעקב שכר ונוכחות</h1>
     
@@ -403,7 +436,8 @@
         localStorage.setItem('vacationBalance', document.getElementById('settingVacation').value || '0');
         localStorage.setItem('sickBalance', document.getElementById('settingSick').value || '0');
         localStorage.setItem('havraaBalance', document.getElementById('settingHavraa').value || '0');
-        alert("הנתונים נשמרו בהצלחה!");
+        syncWorkDataToCloud();
+        alert("הנתונים נשמרו בהצלחה וסונכרנו לענן!");
     }
 
     function calculateShiftPay(startTime, endTime, totalHours, wage) {
@@ -626,6 +660,7 @@
         
         shifts.sort((a, b) => new Date(a.date.split('.').reverse().join('-') + 'T' + a.start) - new Date(b.date.split('.').reverse().join('-') + 'T' + b.start));
         localStorage.setItem('shiftsHistory', JSON.stringify(shifts));
+        syncWorkDataToCloud();
         populateMonthSelector(); 
         renderLog();
     }
@@ -646,6 +681,7 @@
             }
 
             localStorage.setItem('shiftsHistory', JSON.stringify(shifts.filter(s => s.id !== id)));
+            syncWorkDataToCloud();
             populateMonthSelector(); renderLog();
         }
     }
@@ -697,29 +733,141 @@
     }
 
     const scriptPostUrl = 'https://script.google.com/macros/s/AKfycbz_oBoiUpQ9C_yFsBafkSKjodk1qmuh1sFxnsqFnQ3XHITsWlSOOlLHqgeKqLXlvAgQ/exec';
-    let syncSalaryTimer = null;
+    let syncCloudTimer = null;
+
+    function setSyncStatus(text, color) {
+        const el = document.getElementById('cloudSyncStatus');
+        if (!el) return;
+        el.innerHTML = text;
+        if (color) el.style.color = color;
+    }
+
     function syncSalaryToCloud(monthKey, net) {
-        clearTimeout(syncSalaryTimer);
-        syncSalaryTimer = setTimeout(async () => {
+        syncWorkDataToCloud(monthKey, net);
+    }
+
+    function syncWorkDataToCloud(immediateMonthKey, immediateNet) {
+        clearTimeout(syncCloudTimer);
+        setSyncStatus('☁️ מסנכרן...', '#ff9500');
+        syncCloudTimer = setTimeout(async () => {
             try {
                 const res = await fetch(scriptPostUrl);
                 const cfg = await res.json();
                 const cats = JSON.parse(cfg.categories || '{}');
-                if (!cats.__liveSalaries) cats.__liveSalaries = {};
-                cats.__liveSalaries[monthKey] = Math.round(net);
+                
+                const shifts = JSON.parse(localStorage.getItem('shiftsHistory') || '[]');
+                const bonuses = {};
+                for (let i = 0; i < localStorage.length; i++) {
+                    let k = localStorage.key(i);
+                    if (k && k.startsWith('bonus_')) bonuses[k] = localStorage.getItem(k);
+                }
+                const settings = {
+                    hourlyWage: localStorage.getItem('hourlyWage'),
+                    travelExp: localStorage.getItem('travelExp'),
+                    vacationBalance: localStorage.getItem('vacationBalance'),
+                    sickBalance: localStorage.getItem('sickBalance'),
+                    havraaBalance: localStorage.getItem('havraaBalance'),
+                    bonuses: bonuses
+                };
+
+                let cloudShifts = [];
+                if (cats.__shiftsData && Array.isArray(cats.__shiftsData.shiftsHistory)) {
+                    cloudShifts = cats.__shiftsData.shiftsHistory;
+                }
+                const shiftMap = new Map();
+                cloudShifts.forEach(s => shiftMap.set(String(s.id), s));
+                shifts.forEach(s => shiftMap.set(String(s.id), s));
+                const mergedShifts = Array.from(shiftMap.values());
+                mergedShifts.sort((a, b) => new Date(a.date.split('.').reverse().join('-') + 'T' + (a.start || '00:00')) - new Date(b.date.split('.').reverse().join('-') + 'T' + (b.start || '00:00')));
+
+                cats.__shiftsData = {
+                    shiftsHistory: mergedShifts,
+                    settings: settings,
+                    updatedAt: Date.now()
+                };
+
+                if (immediateMonthKey && immediateNet !== undefined) {
+                    if (!cats.__liveSalaries) cats.__liveSalaries = {};
+                    cats.__liveSalaries[immediateMonthKey] = Math.round(immediateNet);
+                }
+
                 const payload = {
                     action: 'save_config',
                     aliases: cfg.aliases,
                     categories: JSON.stringify(cats)
                 };
-                fetch(scriptPostUrl, {
+                await fetch(scriptPostUrl, {
                     method: 'POST',
                     mode: 'no-cors',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify(payload)
                 });
-            } catch(e) {}
+                setSyncStatus('☁️ מסונכרן', '#34c759');
+            } catch(e) {
+                console.warn('Sync failed', e);
+                setSyncStatus('☁️ לא מקוון', '#8e8e93');
+            }
         }, 1200);
+    }
+
+    async function loadWorkDataFromCloud() {
+        setSyncStatus('☁️ בודק ענן...', '#ff9500');
+        try {
+            const res = await fetch(scriptPostUrl);
+            const cfg = await res.json();
+            const cats = JSON.parse(cfg.categories || '{}');
+            
+            let changed = false;
+            if (cats.__shiftsData) {
+                const cloudShifts = Array.isArray(cats.__shiftsData.shiftsHistory) ? cats.__shiftsData.shiftsHistory : [];
+                const localShifts = JSON.parse(localStorage.getItem('shiftsHistory') || '[]');
+
+                const shiftMap = new Map();
+                cloudShifts.forEach(s => shiftMap.set(String(s.id), s));
+                localShifts.forEach(s => shiftMap.set(String(s.id), s));
+                const mergedShifts = Array.from(shiftMap.values());
+                mergedShifts.sort((a, b) => new Date(a.date.split('.').reverse().join('-') + 'T' + (a.start || '00:00')) - new Date(b.date.split('.').reverse().join('-') + 'T' + (b.start || '00:00')));
+
+                if (mergedShifts.length > 0 && JSON.stringify(mergedShifts) !== JSON.stringify(localShifts)) {
+                    localStorage.setItem('shiftsHistory', JSON.stringify(mergedShifts));
+                    changed = true;
+                }
+
+                const cSet = cats.__shiftsData.settings;
+                if (cSet) {
+                    if (cSet.hourlyWage && !localStorage.getItem('hourlyWage')) { localStorage.setItem('hourlyWage', cSet.hourlyWage); changed = true; }
+                    if (cSet.travelExp && !localStorage.getItem('travelExp')) { localStorage.setItem('travelExp', cSet.travelExp); changed = true; }
+                    if (cSet.vacationBalance && !localStorage.getItem('vacationBalance')) { localStorage.setItem('vacationBalance', cSet.vacationBalance); changed = true; }
+                    if (cSet.sickBalance && !localStorage.getItem('sickBalance')) { localStorage.setItem('sickBalance', cSet.sickBalance); changed = true; }
+                    if (cSet.havraaBalance && !localStorage.getItem('havraaBalance')) { localStorage.setItem('havraaBalance', cSet.havraaBalance); changed = true; }
+                    if (cSet.bonuses && typeof cSet.bonuses === 'object') {
+                        Object.entries(cSet.bonuses).forEach(([k, v]) => {
+                            if (!localStorage.getItem(k)) { localStorage.setItem(k, v); changed = true; }
+                        });
+                    }
+                }
+
+                if (localShifts.length > cloudShifts.length) {
+                    syncWorkDataToCloud();
+                }
+            } else {
+                const localShifts = JSON.parse(localStorage.getItem('shiftsHistory') || '[]');
+                if (localShifts.length > 0) {
+                    syncWorkDataToCloud();
+                }
+            }
+
+            setSyncStatus('☁️ מסונכרן', '#34c759');
+            if (changed) {
+                populateMonthSelector();
+                renderLog();
+                loadSettings();
+                if (typeof renderNetCalculator === 'function') renderNetCalculator();
+            }
+        } catch(e) {
+            console.warn('Load from cloud failed', e);
+            setSyncStatus('☁️ נשמר מקומית', '#8e8e93');
+        }
     }
 
     function exportAllData() {
@@ -762,7 +910,8 @@
             if (data.bonuses) {
                 Object.keys(data.bonuses).forEach(k => localStorage.setItem(k, data.bonuses[k]));
             }
-            alert("הנתונים שוחזרו בהצלחה!");
+            syncWorkDataToCloud();
+            alert("הנתונים שוחזרו בהצלחה וסונכרנו לענן!");
             location.reload();
         } catch(e) {
             alert("שגיאה בייבוא הנתונים: פורמט לא תקין");
@@ -1043,6 +1192,7 @@
         updateActiveState();
         populateMonthSelector();
         renderLog();
+        loadWorkDataFromCloud();
     }
 </script>
 
