@@ -165,6 +165,22 @@
             </div>
         </div>
 
+        <!-- קוביה: שעון נוכחות וחישוב שכר -->
+        <div class="glass-card" onclick="location.href='work.html'" style="border:1px solid rgba(52,199,89,0.25);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="background:var(--accent-green); width:36px; height:36px; border-radius:12px; display:flex; justify-content:center; align-items:center;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    </div>
+                    <div>
+                        <h3 style="margin:0; font-size:18px;">שעון נוכחות ושכר</h3>
+                        <p id="workCardSub" style="margin:4px 0 0; font-size:13px; color:var(--text-secondary);">מעקב משמרות, שכר נטו וסנכרון לתקציב</p>
+                    </div>
+                </div>
+                <span style="color:var(--text-secondary);">❯</span>
+            </div>
+        </div>
+
         <div class="glass-card" onclick="showDetails('קבועה')">
             <div class="budget-row">
                 <div class="budget-info">
@@ -240,6 +256,16 @@
                 <div>
                     <h3 style="margin:0; font-size:18px;">הוצאות קבועות חודשיות</h3>
                     <p style="margin:4px 0 0; font-size:13px; color:var(--text-secondary);">סכומים שחוזרים כל חודש בלי עסקה</p>
+                </div>
+                <span style="color:var(--text-secondary);">❯</span>
+            </div>
+        </div>
+
+        <div class="glass-card" onclick="location.href='work.html'">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <h3 style="margin:0; font-size:18px;">שעון נוכחות ושכר</h3>
+                    <p style="margin:4px 0 0; font-size:13px; color:var(--text-secondary);">דיווח שעות, בונוס חודשי ומחשבון נטו</p>
                 </div>
                 <span style="color:var(--text-secondary);">❯</span>
             </div>
@@ -431,6 +457,8 @@
             "חיוב מ-יבכם": "קופ״ח - מכבי שלי",
             "פז YELLOW בקעת בית ה": "דלק - yellow",
             "רשת חנו משכורתדינמיקה": "משכורת - דינמיקה",
+            "דינמיקה": "משכורת - דינמיקה",
+            "משכורתדינמיקה": "משכורת - דינמיקה",
             "סניף קשת טעמים גבעת": "שכונתית",
             "פיצוציאפי": "פיצוציה - פיצוציאפי",
             "דלק מנטה הקישון": "דלק - מנטה",
@@ -549,10 +577,15 @@
         let businessAliases = JSON.parse(localStorage.getItem('smartbudget_aliases')) || defaultAliases;
         let categoriesData = JSON.parse(localStorage.getItem('smartbudget_categories')) || defaultCategories;
         let recurringMonthly = loadRecurring();
+        let cloudSalaries = {};
 
-        // הרשימה של ההוצאות הקבועות נשמרת בענן בתוך אובייקט הקטגוריות תחת מפתח שמור (__recurring)
+        // הרשימה של ההוצאות הקבועות והשכר המשוער נשמרים בענן בתוך אובייקט הקטגוריות
         function buildCategoriesPayload() {
-            return JSON.stringify({ ...categoriesData, __recurring: recurringMonthly });
+            return JSON.stringify({ 
+                ...categoriesData, 
+                __recurring: recurringMonthly,
+                __liveSalaries: cloudSalaries 
+            });
         }
 
         function pushConfigToCloud() {
@@ -596,12 +629,16 @@
                 if (config.aliases) businessAliases = JSON.parse(config.aliases);
                 if (config.categories) {
                     const cats = JSON.parse(config.categories);
+                    if (cats.__liveSalaries && typeof cats.__liveSalaries === 'object') {
+                        cloudSalaries = cats.__liveSalaries;
+                    }
                     if (Array.isArray(cats.__recurring)) {
                         recurringMonthly = cats.__recurring;
                         cloudHasRecurring = true;
                         localStorage.setItem('smartbudget_recurring', JSON.stringify(recurringMonthly));
                     }
                     delete cats.__recurring;
+                    delete cats.__liveSalaries;
                     categoriesData = cats;
                 }
                 
@@ -611,6 +648,9 @@
 
                 // הפעם הראשונה: הענן עוד לא מכיר את ההוצאות הקבועות - מעלים אותן
                 if (!cloudHasRecurring) pushConfigToCloud();
+                
+                // עדכון התצוגה לאחר טעינת שכר וקבועות מהענן
+                processAndRender();
             } catch (error) {
                 console.log("עובד על נתונים מקומיים (טוען...)");
             }
@@ -761,19 +801,153 @@
             }
         }
 
+        // חישוב שכר נטו משוער מאפליקציית שעות העבודה
+        function getWorkAppSalary(workYear, workMonth) {
+            const workMonthKey = `${workYear}-${String(workMonth).padStart(2, '0')}`;
+            
+            // 1. חישוב חי מתוך משמרות והגדרות ב-localStorage
+            try {
+                const shifts = JSON.parse(localStorage.getItem('shiftsHistory') || '[]');
+                const monthShifts = shifts.filter(s => s.monthKey === workMonthKey);
+                const bonusVal = localStorage.getItem('bonus_' + workMonthKey);
+                const bonus = parseFloat(bonusVal || '0');
+                
+                if (monthShifts.length > 0 || bonus > 0) {
+                    const travel = parseFloat(localStorage.getItem('travelExp') || '1000');
+                    const wage = parseFloat(localStorage.getItem('hourlyWage') || '37.07');
+                    const REGULAR_HOURS = 8.0;
+
+                    let pensionableBasePay = 0; 
+                    let totalGrossPay = 0;
+                    let uniqueWorkDays = new Set();
+
+                    monthShifts.forEach(s => {
+                        let shiftPay = parseFloat(s.pay || 0);
+                        totalGrossPay += shiftPay;
+                        
+                        if (s.type === 'shift' || !s.type) {
+                            uniqueWorkDays.add(s.date);
+                            let hrs = parseFloat(s.hours || 0);
+                            let regHrs = Math.min(hrs, REGULAR_HOURS);
+                            pensionableBasePay += (regHrs * wage);
+                        } else if (s.type === 'vacation' || s.type === 'sick') {
+                            pensionableBasePay += shiftPay;
+                        }
+                    });
+
+                    let daysCount = uniqueWorkDays.size;
+                    let cibusZkifa = daysCount * 40;
+                    let cibusNikuy = daysCount * 12;
+                    let fixedZkifot = 20.00 + 42.31;
+                    let totalZkifot = cibusZkifa + fixedZkifot;
+
+                    let physicalGross = totalGrossPay + travel + bonus; 
+                    let taxGross = physicalGross + totalZkifot;
+                    let pension = (pensionableBasePay + bonus) * 0.07; 
+                    let bleumi = (taxGross <= 7522) ? (taxGross * 0.035) : (7522 * 0.035) + ((taxGross - 7522) * 0.12);
+                    
+                    let tax = 0;
+                    if (taxGross > 0) tax += Math.min(taxGross, 7010) * 0.10;
+                    if (taxGross > 7010) tax += Math.min(taxGross - 7010, 10060 - 7010) * 0.14;
+                    if (taxGross > 10060) tax += Math.min(taxGross - 10060, 16150 - 10060) * 0.20;
+                    if (taxGross > 16150) tax += Math.min(taxGross - 16150, 22440 - 16150) * 0.31;
+                    
+                    let creditPointsVal = 2.25 * 242; 
+                    let residentDiscount = Math.min(taxGross, 12220) * 0.07; 
+                    let pensionCredit = pension * 0.35; 
+                    
+                    tax = tax - creditPointsVal - residentDiscount - pensionCredit;
+                    if (tax < 0) tax = 0;
+                    
+                    let net = physicalGross - pension - bleumi - tax - cibusNikuy;
+                    if (net > 0) return Math.round(net);
+                }
+            } catch(e) {}
+
+            // 2. גיבוי מנטו שנשמר בלוקאל סטורג'
+            const cachedNet = parseFloat(localStorage.getItem('salary_net_' + workMonthKey) || '0');
+            if (cachedNet > 0) return Math.round(cachedNet);
+
+            // 3. גיבוי מנתוני ענן (גוגל שיטס)
+            if (cloudSalaries && cloudSalaries[workMonthKey]) {
+                const cNet = parseFloat(cloudSalaries[workMonthKey]);
+                if (cNet > 0) return Math.round(cNet);
+            }
+
+            return 0;
+        }
+
+        // הזרקת שכר דינמיקה לחודש העוקב (משולם ב-10 לחודש)
+        function injectLiveSalary() {
+            allTransactions = allTransactions.filter(tx => !tx.isEstimatedSalary);
+
+            const now = new Date();
+            const startKey = (now.getFullYear() * 12 + (now.getMonth() + 1)) - 6;
+            const endKey = (now.getFullYear() * 12 + (now.getMonth() + 1)) + 12;
+
+            for (let k = startKey; k <= endKey; k++) {
+                const payYear = Math.floor((k - 1) / 12);
+                const payMonth = ((k - 1) % 12) + 1;
+
+                // שכר של חודש עבודה קודם משולם ב-10 לחודש זה
+                let workMonth = payMonth - 1;
+                let workYear = payYear;
+                if (workMonth < 1) { workMonth = 12; workYear--; }
+
+                // האם כבר קיימת בבנק משכורת לחודש זה?
+                const hasConfirmedSalary = allTransactions.some(tx => 
+                    tx.month === payMonth && 
+                    tx.year === payYear && 
+                    tx.type === 'הכנסה' && 
+                    !tx.isEstimatedSalary && 
+                    (
+                        (tx.rawBusiness && (tx.rawBusiness.includes('דינמיקה') || tx.rawBusiness.includes('משכורת'))) ||
+                        (tx.displayBusiness && (tx.displayBusiness.includes('דינמיקה') || tx.displayBusiness.includes('משכורת')))
+                    )
+                );
+
+                if (!hasConfirmedSalary) {
+                    const netSalary = getWorkAppSalary(workYear, workMonth);
+                    if (netSalary > 0) {
+                        const dateStr = `10.${String(payMonth).padStart(2, '0')}.${String(payYear).slice(-2)}`;
+                        allTransactions.push({
+                            id: `live-salary-${payYear}-${payMonth}`,
+                            dateStr: dateStr,
+                            rawBusiness: 'משכורת - דינמיקה',
+                            displayBusiness: 'משכורת (משוערת משעות עבודה)',
+                            suffix: '',
+                            month: payMonth,
+                            year: payYear,
+                            amount: netSalary,
+                            type: 'הכנסה',
+                            method: 'העברה בנקאית',
+                            isEstimatedSalary: true,
+                            workMonthKey: `${workYear}-${String(workMonth).padStart(2, '0')}`
+                        });
+                    }
+                }
+            }
+        }
+
         function processAndRender() {
             try {
                 injectRecurringCharges();
+                injectLiveSalary();
+
                 document.getElementById('monthDisplay').innerText = `${monthNames[currentViewMonth-1]} ${currentViewYear}`;
                 
                 let totalIncome = 0; let fixedSpent = 0; let variableSpent = 0;
                 let sCred = 0, sDir = 0, sBank = 0, sOth = 0;
+                let hasEstSalaryInView = false;
 
                 for (const tx of allTransactions) {
                     if (tx.month === currentViewMonth && tx.year === currentViewYear) {
                         if (tx.type === 'קבועה' || tx.type === 'תשלומים') fixedSpent += tx.amount;
                         else if (tx.type === 'משתנה') variableSpent += tx.amount;
-                        else if (tx.type === 'הכנסה') totalIncome += tx.amount;
+                        else if (tx.type === 'הכנסה') {
+                            totalIncome += tx.amount;
+                            if (tx.isEstimatedSalary) hasEstSalaryInView = true;
+                        }
 
                         if (tx.type !== 'הכנסה') {
                             if (tx.method === 'אשראי') sCred += tx.amount;
@@ -797,7 +971,16 @@
 
                 document.getElementById('mainBalance').innerText = '₪' + totalBalance.toLocaleString(undefined, {maximumFractionDigits: 0});
                 document.getElementById('incomeTotal').innerText = '₪' + totalIncome.toLocaleString();
-                document.getElementById('savingsText').innerText = `יעד לחיסכון (20%): ₪${savingsGoal.toLocaleString()}`;
+                
+                const savingsEl = document.getElementById('savingsText');
+                if (savingsEl) {
+                    let savingsText = `יעד לחיסכון (20%): ₪${savingsGoal.toLocaleString()}`;
+                    if (hasEstSalaryInView) {
+                        savingsText += ` · ⚡ משוער משעות עבודה`;
+                    }
+                    savingsEl.innerText = savingsText;
+                }
+
                 document.getElementById('fixedSpent').innerText = '₪' + fixedSpent.toLocaleString(undefined, {maximumFractionDigits: 0});
                 document.getElementById('fixedBudgetText').innerText = `מתוך ${fixedBudget.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
                 document.getElementById('variableSpent').innerText = '₪' + variableSpent.toLocaleString(undefined, {maximumFractionDigits: 0});
@@ -815,6 +998,19 @@
                     if(variablePercent > 80) document.getElementById('variableBar').classList.add('warning');
                     else document.getElementById('variableBar').classList.remove('warning');
                 }, 50);
+
+                // עדכון כרטיס שעון נוכחות בדאשבורד
+                const workSub = document.getElementById('workCardSub');
+                if (workSub) {
+                    const now = new Date();
+                    const currentEarned = getWorkAppSalary(now.getFullYear(), now.getMonth() + 1);
+                    if (currentEarned > 0) {
+                        workSub.innerText = `נצבר החודש לתשלום ב-10 לחודש הבא: ₪${currentEarned.toLocaleString()}`;
+                    } else {
+                        workSub.innerText = 'מעקב משמרות, שכר נטו וסנכרון לתקציב';
+                    }
+                }
+
                 updateUnclassifiedBadge();
             } catch(e) {}
         }
@@ -1116,7 +1312,19 @@
                         const safeDisp = tx.displayBusiness.replace(/'/g, "\\'").replace(/"/g, "&quot;");
                         const txLabel = tx.isRecurring ? `${tx.displayBusiness} - ${methodShortLabel(tx.method)}` : tx.displayBusiness;
 
-                        if (tx.isRecurring) {
+                        if (tx.isEstimatedSalary) {
+                            html += `
+                            <li class="swipe-container" style="cursor:pointer;" onclick="location.href='work.html'">
+                                <div class="swipe-content" style="background:rgba(52,199,89,0.12); border:0.5px solid rgba(52,199,89,0.35);">
+                                    <div style="flex-grow:1;">
+                                        <span class="tx-date">${tx.dateStr} ${methodBadge} <span style="font-size:9px; background:rgba(52,199,89,0.25); color:var(--accent-green); padding:2px 4px; border-radius:4px; margin-right:5px; font-weight:bold;">משוער משעות עבודה ⚡</span></span>
+                                        <span style="font-weight:600;">${tx.displayBusiness}</span>
+                                        <span style="display:block; font-size:11px; color:var(--text-secondary); margin-top:2px;">לחץ לעריכת משמרות ובונוס בשעון הנוכחות ❯</span>
+                                    </div>
+                                    <span class="tx-amt" style="color:var(--accent-green); font-weight:700;">₪${tx.amount.toLocaleString()}</span>
+                                </div>
+                            </li>`;
+                        } else if (tx.isRecurring) {
                             html += `
                             <li class="swipe-container">
                                 <div class="swipe-content" style="background:#202022;">
@@ -1639,32 +1847,42 @@
         window.openForecast = function() {
             const nowKey = nowMonthKey();
             const buckets = {};
-            for (let i = 0; i < 6; i++) buckets[nowKey + i] = { fixed: 0, inst: 0, other: 0 };
+            for (let i = 0; i < 6; i++) buckets[nowKey + i] = { fixed: 0, inst: 0, other: 0, income: 0, hasLiveSalary: false };
             allTransactions.forEach(tx => {
-                if (tx.type === 'הכנסה') return;
                 const b = buckets[tx.year * 12 + tx.month];
                 if (!b) return;
-                if (tx.isRecurring) b.fixed += tx.amount;
-                else if (tx.type === 'תשלומים') b.inst += tx.amount;
-                else b.other += tx.amount;
+                if (tx.type === 'הכנסה') {
+                    b.income += tx.amount;
+                    if (tx.isEstimatedSalary) b.hasLiveSalary = true;
+                } else if (tx.isRecurring) {
+                    b.fixed += tx.amount;
+                } else if (tx.type === 'תשלומים') {
+                    b.inst += tx.amount;
+                } else {
+                    b.other += tx.amount;
+                }
             });
             const keys = Object.keys(buckets).map(Number);
             const maxTotal = Math.max(1, ...keys.map(k => buckets[k].fixed + buckets[k].inst + buckets[k].other));
 
-            let html = `<div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">הוצאות ידועות לכל חודש: קבועות חודשיות, תשלומים ושאר עסקאות שכבר קיימות.</div>`;
+            let html = `<div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">הוצאות ידועות והכנסות צפויות ל-6 חודשים קדימה (כולל שכר משוער משעות עבודה).</div>`;
             keys.forEach((k, idx) => {
                 const b = buckets[k];
                 const total = b.fixed + b.inst + b.other;
                 const pct = Math.round((total / maxTotal) * 100);
+                const netCash = b.income > 0 ? (b.income - total) : null;
+                const incomeBadge = b.hasLiveSalary ? '<span style="font-size:9px; background:rgba(52,199,89,0.2); color:var(--accent-green); padding:2px 5px; border-radius:4px; margin-right:4px;">משעות ⚡</span>' : '';
                 html += `
                 <div class="mgmt-item">
-                    <div class="mgmt-title"><span>${keyLabel(k)}${idx === 0 ? ' (החודש)' : ''}</span><span>${fmtMoney(total)}</span></div>
+                    <div class="mgmt-title"><span>${keyLabel(k)}${idx === 0 ? ' (החודש)' : ''}</span><span>הוצאות: ${fmtMoney(total)}</span></div>
                     <div class="progress-bar" style="margin-top:8px;"><div class="progress-fill" style="width:${pct}%;"></div></div>
-                    <div style="margin-top:8px; font-size:12px; color:var(--text-secondary); display:flex; justify-content:space-between; gap:6px;">
+                    <div style="margin-top:8px; font-size:12px; color:var(--text-secondary); display:flex; justify-content:space-between; gap:6px; flex-wrap:wrap;">
                         <span>קבועות: ${fmtMoney(b.fixed)}</span>
                         <span>תשלומים: ${fmtMoney(b.inst)}</span>
                         <span>שאר: ${fmtMoney(b.other)}</span>
+                        ${b.income > 0 ? `<span style="color:var(--accent-green); font-weight:600;">הכנסה: ${fmtMoney(b.income)} ${incomeBadge}</span>` : ''}
                     </div>
+                    ${netCash !== null ? `<div style="margin-top:6px; font-size:12px; color:${netCash >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}; font-weight:600; text-align:left;">יתרה צפויה: ${fmtMoney(netCash)}</div>` : ''}
                 </div>`;
             });
 
