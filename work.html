@@ -1,0 +1,1043 @@
+  <!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="שעון נוכחות">
+    <meta name="theme-color" content="#f2f2f7">
+    
+    <title>מעקב שכר ונוכחות</title>
+    <style>
+        :root {
+            --ios-bg: #f2f2f7;
+            --ios-card: #ffffff;
+            --ios-blue: #007aff;
+            --ios-green: #34c759;
+            --ios-red: #ff3b30;
+            --ios-orange: #ff9500;
+            --ios-yellow-edit: #ffcc00;
+            --ios-gray-text: #8e8e93;
+            --ios-border: #e5e5ea;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background-color: var(--ios-bg); 
+            padding: 12px; 
+            text-align: center; 
+            color: #1c1c1e; 
+            margin: 0; 
+            -webkit-tap-highlight-color: transparent;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .card { 
+            background: var(--ios-card); 
+            border-radius: 24px; 
+            padding: 20px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.06); 
+            max-width: 400px; 
+            margin: 0 auto; 
+        }
+
+        h1 { font-size: 20px; font-weight: 700; color: #1c1c1e; margin-top: 0; margin-bottom: 16px;}
+        
+        .tabs { 
+            display: flex; background: #e5e5ea; border-radius: 28px; padding: 2px;
+            margin-bottom: 20px; position: relative; height: 36px; box-sizing: border-box;
+        }
+
+        .tab-slider {
+            position: absolute; top: 2px; bottom: 2px; right: 2px; width: calc(33.333% - 2.66px);
+            background: #ffffff; border-radius: 24px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1); z-index: 1;
+        }
+
+        .tabs.slide-0 .tab-slider { transform: translateX(0); }
+        .tabs.slide-1 .tab-slider { transform: translateX(-100%); }
+        .tabs.slide-2 .tab-slider { transform: translateX(-200%); }
+
+        .tab-btn { 
+            flex: 1; height: 100%; display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 600; border: none; background: transparent; 
+            color: var(--ios-gray-text); cursor: pointer; border-radius: 24px;
+            transition: color 0.25s ease; z-index: 2; padding: 0;
+        }
+        .tab-btn.active { color: var(--ios-blue); font-weight: 700; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        input, select { 
+            padding: 12px; width: 100%; box-sizing: border-box; border-radius: 12px; 
+            border: 1px solid #d1d1d6; font-size: 16px; margin-bottom: 12px; text-align: center; 
+            background: #fafafa; color: #1c1c1e; outline: none; transition: border-color 0.2s;
+        }
+        input:focus, select:focus { border-color: var(--ios-blue); background: #fff; }
+
+        button { 
+            width: 100%; padding: 14px; border: none; border-radius: 14px; font-size: 16px; 
+            font-weight: 600; margin-bottom: 10px; cursor: pointer; color: white; box-sizing: border-box;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        button:active { transform: scale(0.98); opacity: 0.9; }
+        
+        .btn-in { background-color: var(--ios-green); }
+        .btn-out { background-color: var(--ios-red); }
+        .btn-cancel { background-color: var(--ios-orange); font-size: 14px; padding: 10px; margin-top: 2px; margin-bottom: 12px; display: none; }
+        .btn-manual-toggle { background-color: #5856d6; font-size: 15px; padding: 12px; margin-bottom: 12px; }
+        .btn-manual { background-color: var(--ios-blue); font-size: 16px; padding: 12px; margin-bottom: 0; }
+        .btn-save { background-color: var(--ios-green); margin-top: 5px; margin-bottom: 15px;}
+        .btn-pdf-short { background-color: #5856d6; margin-bottom: 8px; font-size: 14px; }
+        .btn-pdf-detailed { background-color: var(--ios-blue); margin-bottom: 0; font-size: 14px; }
+        .btn-cancel-edit { background-color: var(--ios-gray-text); font-size: 14px; padding: 8px; margin-top: 5px; display: none; }
+        
+        .timer-display { font-size: 28px; font-weight: 700; color: #1c1c1e; margin: 12px 0; display: none; font-variant-numeric: tabular-nums; }
+        .timer-start-time { font-size: 13px; font-weight: normal; color: var(--ios-gray-text); margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 6px;}
+        
+        .month-selector-container { margin-bottom: 14px; background: #f6f6f8; padding: 10px; border-radius: 12px; border: 1px solid var(--ios-border);}
+        .month-selector-container label { font-size: 14px; color: var(--ios-gray-text); }
+        .month-selector-container select { margin-bottom: 0; background: #fff; font-weight: 600; padding: 8px;}
+        
+        .manual-entry { background: #f6f6f8; padding: 14px; border-radius: 14px; margin-bottom: 15px; border: 1px solid var(--ios-border); display: none; }
+        .manual-entry h3 { margin-top: 0; font-size: 15px; color: #1c1c1e; margin-bottom: 12px;}
+        .time-inputs { display: flex; justify-content: space-between; gap: 8px; }
+        
+        .log { margin-top: 15px; text-align: right; background: #ffffff; padding: 4px; border-radius: 14px; font-size: 14px; overflow: hidden;}
+        
+        .shift-container { position: relative; margin-bottom: 8px; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid var(--ios-border);}
+        .shift-actions-bg { position: absolute; top: 0; left: 0; bottom: 0; right: 0; display: flex; justify-content: flex-start; z-index: 1; }
+        .action-btn { width: 75px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600; border: none; cursor: pointer; gap: 4px; padding: 0; margin: 0; height: 100%; border-radius: 0;}
+        .action-delete { background-color: var(--ios-red); } 
+        .action-edit { background-color: var(--ios-yellow-edit); color: #000; }   
+        
+        .shift-card { position: relative; background: #fafafc; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; z-index: 2; transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1); border-radius: 12px;}
+        .shift-info { flex-grow: 1; line-height: 1.4; }
+        .shift-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;}
+        .shift-header-right { display: flex; align-items: center; gap: 4px;}
+        .shift-pay-tag { font-weight: 700; color: var(--ios-blue); font-size: 13px;}
+        .shift-type-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+        .badge-shift { background: #e5e5ea; color: #3a3a3c; }
+        .badge-weekend { background: #5856d6; color: white; }
+        .badge-vacation { background: var(--ios-green); color: white; }
+        .badge-sick { background: var(--ios-orange); color: white; }
+        
+        .data-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: #f6f6f8; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--ios-border);}
+        .data-row label { font-weight: 600; font-size: 13px; width: 60%; text-align: right; color: #3a3a3c;}
+        .data-row input { width: 35%; margin-bottom: 0; padding: 8px; font-size: 14px;}
+        .calc-summary-box { background: #fff; border: 1px solid var(--ios-border); padding: 14px; border-radius: 14px; text-align: right; margin-top:10px; box-shadow: 0 4px 12px rgba(0,0,0,0.03);}
+        
+        .custom-warning-icon { display: inline-flex; align-items: center; justify-content: center; margin-left: 6px; vertical-align: middle; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <a href="index.html" style="color:var(--ios-blue); text-decoration:none; font-size:14px; font-weight:600; display:inline-flex; align-items:center; gap:4px;">
+            <span>‹</span> חזרה לתקציב חכם (SmartBudget)
+        </a>
+    </div>
+    <h1>מעקב שכר ונוכחות</h1>
+    
+    <div class="tabs slide-0" id="tabsContainer">
+        <div class="tab-slider"></div>
+        <button class="tab-btn active" onclick="switchTab(0, 'tab-attendance', this)">נוכחות</button>
+        <button class="tab-btn" onclick="switchTab(1, 'tab-net', this)">מחשבון נטו</button>
+        <button class="tab-btn" onclick="switchTab(2, 'tab-data', this)">הגדרות</button>
+    </div>
+
+    <!-- מסך נוכחות -->
+    <div id="tab-attendance" class="tab-content active">
+        <div class="month-selector-container">
+            <label for="monthFilter"><strong>חודש נוכחי:</strong></label><br>
+            <select id="monthFilter" onchange="renderLog()"></select>
+        </div>
+
+        <button class="btn-in" onclick="clockIn()">1. דיווח כניסה</button>
+        <div id="shiftTimer" class="timer-display"></div>
+        <button class="btn-out" onclick="clockOut()">2. דיווח יציאה</button>
+        <button class="btn-cancel" id="cancelBtn" onclick="cancelActiveShift()">בטל דיווח כניסה פעיל</button>
+
+        <button class="btn-manual-toggle" onclick="toggleManualBox()">➕ הוסף דיווח ידני / חופש / מחלה</button>
+        <div class="manual-entry" id="manualEntryBox">
+            <h3 id="formTitle">הוספת דיווח</h3>
+            <select id="entryType" onchange="toggleTimeInputs()">
+                <option value="shift">משמרת עבודה רגילה</option>
+                <option value="vacation">יום חופשה (100% תשלום)</option>
+                <option value="sick">יום מחלה (זיהוי אוטומטי)</option>
+            </select>
+            <input type="text" id="manualDate" placeholder="תאריך משמרת" onfocus="(this.type='date')" onblur="(this.value == '' ? this.type='text' : this.type='date')" />
+            <div class="time-inputs" id="timeInputsContainer">
+                <input type="text" id="manualStart" placeholder="שעת כניסה" onfocus="(this.type='time')" onblur="(this.value == '' ? this.type='text' : this.type='time')" />
+                <input type="text" id="manualEnd" placeholder="שעת יציאה" onfocus="(this.type='time')" onblur="(this.value == '' ? this.type='text' : this.type='time')" />
+            </div>
+            <button class="btn-manual" id="btnManualSave" onclick="addManualShift()">הוסף להיסטוריה</button>
+            <button class="btn-cancel-edit" id="btnCancelEdit" onclick="resetEditMode()">ביטול עריכה</button>
+        </div>
+
+        <div class="log" id="report"></div>
+    </div>
+
+    <!-- מסך מחשבון נטו -->
+    <div id="tab-net" class="tab-content">
+        <div class="month-selector-container">
+            <label for="netMonthFilter"><strong>בחר חודש לחישוב נטו:</strong></label><br>
+            <select id="netMonthFilter" onchange="onNetMonthChange()"></select>
+        </div>
+        
+        <div class="data-row" style="background:#fff;">
+            <label style="color:#007aff;">בונוס / תמריץ לחודש זה (₪):</label>
+            <input type="number" id="netBonusInput" placeholder="0" oninput="renderNetCalculator()" style="background:#eef0f5;" />
+        </div>
+
+        <div class="calc-summary-box" id="netResultBox"></div>
+    </div>
+
+    <!-- מסך הגדרות ודוחות -->
+    <div id="tab-data" class="tab-content">
+        <h3 style="margin-top: 0; font-size: 16px; margin-bottom: 14px;">הגדרות ויתרות</h3>
+        
+        <div class="data-row">
+            <label>שכר בסיס שעתי (₪):</label>
+            <input type="number" id="settingWage" step="0.1" />
+        </div>
+        <div class="data-row">
+            <label>דמי נסיעות קבועים (₪):</label>
+            <input type="number" id="settingTravel" step="1" />
+        </div>
+        <div class="data-row">
+            <label>יתרת ימי חופשה:</label>
+            <input type="number" id="settingVacation" step="0.01" />
+        </div>
+        <div class="data-row">
+            <label>יתרת ימי מחלה:</label>
+            <input type="number" id="settingSick" step="0.01" />
+        </div>
+        <div class="data-row">
+            <label>יתרת דמי הבראה (ימים):</label>
+            <input type="number" id="settingHavraa" step="0.01" />
+        </div>
+        <div style="font-size:11px; color:var(--ios-gray-text); text-align:right; margin-bottom:12px;">* תאריך תחילת העסקה מוגדר ל-24/11/2024 (לצורך חישוב ותק הבראה). היתרות מתעדכנות אוטומטית בכל סוף חודש.</div>
+        
+        <button class="btn-save" onclick="saveSettings()">שמור נתונים</button>
+
+        <h3 style="font-size: 15px; margin: 18px 0 10px 0; text-align: right; color: #3a3a3c;">הפקת דוחות:</h3>
+        <div class="month-selector-container" style="padding:8px; margin-bottom:10px;">
+            <label style="font-size: 13px;">בחר חודש לדוח:</label>
+            <select id="reportMonthFilter" style="margin-top:4px; font-size:14px; padding:6px;"></select>
+        </div>
+        <button class="btn-pdf-short" onclick="generatePDF('short')">📄 הורד דוח מקוצר (למעסיק)</button>
+        <button class="btn-pdf-detailed" onclick="generatePDF('detailed')">📊 הורד דוח מפורט</button>
+
+        <h3 style="font-size: 15px; margin: 20px 0 10px 0; text-align: right; color: #3a3a3c;">גיבוי ושחזור נתונים:</h3>
+        <button type="button" class="btn-manual" style="background:#007aff; margin-bottom:8px;" onclick="exportAllData()">📤 העתק גיבוי מלא ללוח (Export)</button>
+        <button type="button" class="btn-manual" style="background:#5856d6; margin-bottom:12px;" onclick="importAllData()">📥 שחזר מגיבוי (Import)</button>
+    </div>
+</div>
+
+<script>
+    const REGULAR_HOURS = 8.0;
+    const START_DATE = new Date('2024-11-24'); // תאריך תחילת העסקה
+    const hebrewMonths = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
+    let editingId = null;
+    let openSwipeId = null;
+
+    const warningSvg = `<svg class="custom-warning-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" title="פחות מ-5 שעות"><path d="M12 2C10.5 2 9.5 3 9.5 4.5V12.5C9.5 14 10.5 15 12 15C13.5 15 14.5 14 14.5 12.5V4.5C14.5 3 13.5 2 12 2ZM12 17.5C10.6 17.5 9.5 18.6 9.5 20C9.5 21.4 10.6 22.5 12 22.5C13.4 22.5 14.5 21.4 14.5 20C14.5 18.6 13.4 17.5 12 17.5Z" fill="#d93025"/></svg>`;
+
+    function initializeDefaults() {
+        if (!localStorage.getItem('hourlyWage')) {
+            localStorage.setItem('hourlyWage', '37.07');
+            localStorage.setItem('travelExp', '1000');
+            // יתרות מעודכנות לסוף אוגוסט 2026 לפי התלוש
+            localStorage.setItem('vacationBalance', '23.57');
+            localStorage.setItem('sickBalance', '12.44');
+            localStorage.setItem('havraaBalance', '0.50');
+        }
+        injectSeptember2026Exact();
+        processMonthlyAccrualsIfNeeded();
+    }
+
+    function injectSeptember2026Exact() {
+        let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+        if (shifts.some(s => s.monthKey === "2026-09")) return; 
+
+        const septData = [
+            { d: "01.09.2026", s: "08:11", e: "16:52", exactHours: 8.37 },
+            { d: "02.09.2026", s: "10:07", e: "20:35", exactHours: 10.47 },
+            { d: "03.09.2026", s: "08:29", e: "19:03", exactHours: 10.55 },
+            { d: "04.09.2026", s: "08:00", e: "14:00", exactHours: 6.00 },
+            { d: "06.09.2026", s: "08:20", e: "16:59", exactHours: 8.48 },
+            { d: "07.09.2026", s: "08:09", e: "16:48", exactHours: 8.30 },
+            { d: "08.09.2026", s: "08:09", e: "17:03", exactHours: 8.55 },
+            { d: "09.09.2026", s: "08:30", e: "19:19", exactHours: 10.82 },
+            { d: "10.09.2026", s: "08:00", e: "18:20", exactHours: 10.33 },
+            { d: "11.09.2026", s: "08:04", e: "13:52", exactHours: 5.80 },
+            { d: "14.09.2026", s: "08:11", e: "16:47", exactHours: 8.28 },
+            { d: "15.09.2026", s: "08:15", e: "16:48", exactHours: 8.30 },
+            { d: "16.09.2026", s: "08:14", e: "16:53", exactHours: 8.38 },
+            { d: "17.09.2026", s: "10:25", e: "20:51", exactHours: 10.43 },
+            { d: "20.09.2026", s: "08:06", e: "13:17", exactHours: 5.18 },
+            { d: "22.09.2026", s: "08:16", e: "16:49", exactHours: 8.32 },
+            { d: "23.09.2026", s: "08:13", e: "16:51", exactHours: 8.35 },
+            { d: "24.09.2026", s: "09:29", e: "20:54", exactHours: 11.42 },
+            { d: "25.09.2026", s: "08:09", e: "13:08", exactHours: 4.98 },
+            { d: "27.09.2026", s: "08:22", e: "17:27", exactHours: 8.95 },
+            { d: "29.09.2026", s: "08:18", e: "17:01", exactHours: 8.52 },
+            { d: "30.09.2026", s: "08:11", e: "16:38", exactHours: 8.13 }
+        ];
+
+        let wage = parseFloat(localStorage.getItem('hourlyWage') || '37.07');
+        let newShifts = septData.map((shift, i) => {
+            let parts = shift.d.split('.');
+            let start = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T${shift.s}`);
+            let end = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T${shift.e}`);
+            
+            let payData = calculateShiftPay(start, end, shift.exactHours, wage);
+            return {
+                id: Date.now() + i,
+                type: 'shift',
+                date: shift.d,
+                monthKey: "2026-09",
+                start: shift.s,
+                end: shift.e,
+                hours: shift.exactHours.toFixed(2),
+                pay: payData.totalPay.toFixed(2),
+                isWeekend: payData.isWeekend
+            };
+        });
+
+        localStorage.setItem('shiftsHistory', JSON.stringify([...shifts, ...newShifts]));
+    }
+
+    function processMonthlyAccrualsIfNeeded() {
+        let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+        let accruedMonths = JSON.parse(localStorage.getItem('accruedMonths')) || {};
+        let now = new Date();
+        // חודשים שהסתיימו בלבד
+        let currentMonthKey = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, '0');
+
+        let monthsMap = {};
+        shifts.forEach(s => {
+            if (s.monthKey && (!s.type || s.type === 'shift')) {
+                if (!monthsMap[s.monthKey]) monthsMap[s.monthKey] = 0;
+                monthsMap[s.monthKey] += parseFloat(s.hours);
+            }
+        });
+
+        Object.keys(monthsMap).forEach(mKey => {
+            // רק אם החודש עבר וטרם בוצעה לו צבירה
+            if (mKey < currentMonthKey && !accruedMonths[mKey] && mKey >= "2026-09") {
+                let hours = monthsMap[mKey];
+                let fraction = Math.min(hours / 182, 1.0); // יחסיות משרה לפי 182 שעות
+                
+                // חופשה - לפי 14 ימים בשנה (1.17 לחודש)
+                let newVac = fraction * (14 / 12); 
+                // מחלה - 1.5 ימים לחודש לפי חוק
+                let newSick = fraction * 1.50; 
+                
+                // הבראה - לפי ותק מתאריך תחילת העסקה
+                let parts = mKey.split('-');
+                let mDate = new Date(parts[0], parseInt(parts[1]), 1); 
+                let diffYears = (mDate - START_DATE) / (1000 * 60 * 60 * 24 * 365.25);
+                
+                let havraaDaysPerYear = 5; // שנה ראשונה
+                if (diffYears >= 1) havraaDaysPerYear = 6; // שנים 2-3
+                if (diffYears >= 3) havraaDaysPerYear = 7; // שנים 4-10
+                if (diffYears >= 10) havraaDaysPerYear = 8; // שנים 11-15
+                
+                let newHavraa = fraction * (havraaDaysPerYear / 12);
+
+                let vacBal = parseFloat(localStorage.getItem('vacationBalance') || '0');
+                let sickBal = parseFloat(localStorage.getItem('sickBalance') || '0');
+                let havraaBal = parseFloat(localStorage.getItem('havraaBalance') || '0');
+
+                localStorage.setItem('vacationBalance', (vacBal + newVac).toFixed(2));
+                localStorage.setItem('sickBalance', (sickBal + newSick).toFixed(2));
+                localStorage.setItem('havraaBalance', (havraaBal + newHavraa).toFixed(2));
+
+                accruedMonths[mKey] = true;
+                localStorage.setItem('accruedMonths', JSON.stringify(accruedMonths));
+            }
+        });
+    }
+
+    function switchTab(index, tabId, btnElement) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        
+        document.getElementById(tabId).classList.add('active');
+        btnElement.classList.add('active');
+        document.getElementById('tabsContainer').className = 'tabs slide-' + index;
+
+        if (tabId === 'tab-data') {
+            loadSettings();
+            populateReportMonthSelector();
+        }
+        if (tabId === 'tab-net') {
+            populateNetMonthSelector();
+            renderNetCalculator();
+        }
+    }
+
+    function loadSettings() {
+        document.getElementById('settingWage').value = localStorage.getItem('hourlyWage') || '37.07';
+        document.getElementById('settingTravel').value = localStorage.getItem('travelExp') || '1000';
+        document.getElementById('settingVacation').value = parseFloat(localStorage.getItem('vacationBalance') || '0').toFixed(2);
+        document.getElementById('settingSick').value = parseFloat(localStorage.getItem('sickBalance') || '0').toFixed(2);
+        document.getElementById('settingHavraa').value = parseFloat(localStorage.getItem('havraaBalance') || '0').toFixed(2);
+    }
+
+    function saveSettings() {
+        let wage = document.getElementById('settingWage').value;
+        if (!wage) { alert("חובה להזין שכר שעתי."); return; }
+        localStorage.setItem('hourlyWage', wage);
+        localStorage.setItem('travelExp', document.getElementById('settingTravel').value || '0');
+        localStorage.setItem('vacationBalance', document.getElementById('settingVacation').value || '0');
+        localStorage.setItem('sickBalance', document.getElementById('settingSick').value || '0');
+        localStorage.setItem('havraaBalance', document.getElementById('settingHavraa').value || '0');
+        alert("הנתונים נשמרו בהצלחה!");
+    }
+
+    function calculateShiftPay(startTime, endTime, totalHours, wage) {
+        let day = startTime.getDay(); 
+        let hour = startTime.getHours();
+        let isWeekend = (day === 6) || (day === 5 && hour >= 14);
+
+        let baseMult = isWeekend ? 1.5 : 1.0;
+        let ot1Mult = isWeekend ? 1.75 : 1.25;
+        let ot2Mult = isWeekend ? 2.0 : 1.5;
+
+        let regHours = Math.min(totalHours, REGULAR_HOURS);
+        let ot1Hours = Math.max(0, Math.min(totalHours - REGULAR_HOURS, 2));
+        let ot2Hours = Math.max(0, totalHours - (REGULAR_HOURS + 2));
+
+        let totalPay = (regHours * wage * baseMult) + (ot1Hours * wage * ot1Mult) + (ot2Hours * wage * ot2Mult);
+        return { totalPay, regHours, ot1Hours, ot2Hours, isWeekend };
+    }
+
+    setInterval(updateTimer, 1000);
+    function updateTimer() {
+        let startIso = localStorage.getItem('shiftStart');
+        let timerDiv = document.getElementById('shiftTimer');
+        if (!startIso) { timerDiv.style.display = 'none'; return; }
+        timerDiv.style.display = 'block';
+        let startTime = new Date(startIso);
+        let diffMs = Math.max(0, new Date() - startTime);
+        let hrs = Math.floor(diffMs / 3600000);
+        let mins = Math.floor((diffMs % 3600000) / 60000);
+        let secs = Math.floor((diffMs % 60000) / 1000);
+        
+        timerDiv.innerHTML = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}
+            <div class="timer-start-time">
+                שעת כניסה: ${startTime.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'})}
+                <span onclick="editActiveStartTime()" style="cursor:pointer; opacity:0.7; font-size: 15px;">✏️</span>
+            </div>`;
+    }
+
+    function editActiveStartTime() {
+        let startIso = localStorage.getItem('shiftStart');
+        if (!startIso) return;
+        let startDate = new Date(startIso);
+        let newTime = prompt("הקלד את שעת הכניסה האמיתית (למשל 08:30):", startDate.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}));
+        if (newTime && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(newTime)) {
+            let parts = newTime.split(':');
+            startDate.setHours(parseInt(parts[0]), parseInt(parts[1]), 0, 0);
+            if (startDate > new Date()) return alert("שעת הכניסה לא יכולה להיות עתידית.");
+            localStorage.setItem('shiftStart', startDate.toISOString());
+            updateTimer();
+        }
+    }
+
+    function updateActiveState() {
+        document.getElementById('cancelBtn').style.display = localStorage.getItem('shiftStart') ? 'block' : 'none';
+        updateTimer();
+    }
+
+    function clockIn() {
+        let wage = localStorage.getItem('hourlyWage');
+        if (!wage) { alert("אנא הזן שכר שעתי."); return; }
+        if (localStorage.getItem('shiftStart')) { alert("כבר דיווחת כניסה!"); return; }
+        localStorage.setItem('shiftStart', new Date().toISOString());
+        updateActiveState();
+    }
+
+    function clockOut() {
+        let startIso = localStorage.getItem('shiftStart');
+        if (!startIso) return alert("לא נמצאה שעת כניסה.");
+        let wage = parseFloat(localStorage.getItem('hourlyWage'));
+        let startTime = new Date(startIso);
+        let endTime = new Date();
+        let totalHours = (endTime - startTime) / 3600000;
+        
+        if (totalHours > 24) {
+            alert("עברו יותר מ-24 שעות!");
+            localStorage.removeItem('shiftStart');
+            return updateActiveState();
+        }
+        
+        let payData = calculateShiftPay(startTime, endTime, totalHours, wage);
+        saveShiftLog('shift', startTime, endTime, totalHours, payData.totalPay, 0, payData.isWeekend);
+        localStorage.removeItem('shiftStart');
+        updateActiveState();
+    }
+
+    function cancelActiveShift() {
+        if(confirm("למחוק את דיווח הכניסה הפעיל?")) {
+            localStorage.removeItem('shiftStart');
+            updateActiveState();
+        }
+    }
+
+    function toggleManualBox() {
+        let box = document.getElementById('manualEntryBox');
+        box.style.display = (box.style.display === 'block') ? 'none' : 'block';
+        if(box.style.display === 'block') box.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function toggleTimeInputs() {
+        let type = document.getElementById('entryType').value;
+        document.getElementById('timeInputsContainer').style.display = (type === 'shift') ? 'flex' : 'none';
+    }
+
+    function editShift(id) {
+        closeAllSwipes();
+        let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+        let shift = shifts.find(s => s.id === id);
+        if (!shift) return;
+
+        document.getElementById('entryType').value = shift.type || 'shift';
+        toggleTimeInputs();
+        
+        let mDate = document.getElementById('manualDate');
+        let mStart = document.getElementById('manualStart');
+        let mEnd = document.getElementById('manualEnd');
+
+        let dateParts = shift.date.split('.');
+        if (dateParts.length === 3) {
+            mDate.type = 'date';
+            mDate.value = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+        }
+        
+        if (!shift.type || shift.type === 'shift') {
+            mStart.type = 'time'; mStart.value = shift.start;
+            mEnd.type = 'time'; mEnd.value = shift.end;
+        }
+
+        editingId = id;
+        document.getElementById('manualEntryBox').style.display = 'block';
+        document.getElementById('formTitle').innerText = "עריכת דיווח קיים";
+        let btn = document.getElementById('btnManualSave');
+        btn.innerText = "שמור שינויים";
+        btn.style.backgroundColor = "#ff9500";
+        document.getElementById('btnCancelEdit').style.display = 'block';
+        document.getElementById('manualEntryBox').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function resetEditMode() {
+        editingId = null;
+        document.getElementById('manualEntryBox').style.display = 'none';
+        document.getElementById('formTitle').innerText = "הוספת דיווח";
+        let btn = document.getElementById('btnManualSave');
+        btn.innerText = "הוסף להיסטוריה";
+        btn.style.backgroundColor = "#007aff";
+        document.getElementById('btnCancelEdit').style.display = 'none';
+        
+        document.getElementById('manualDate').value = "";
+        document.getElementById('manualStart').value = "";
+        document.getElementById('manualEnd').value = "";
+    }
+
+    function addManualShift() {
+        let type = document.getElementById('entryType').value;
+        let mDate = document.getElementById('manualDate').value;
+        let wage = parseFloat(localStorage.getItem('hourlyWage'));
+        if (!wage || !mDate) return alert("חסרים פרטים.");
+
+        let startTime, endTime, totalHours, totalPay, sickDayNum = 0, isWeekend = false;
+
+        if (type === 'shift') {
+            let mStart = document.getElementById('manualStart').value;
+            let mEnd = document.getElementById('manualEnd').value;
+            if (!mStart || !mEnd) return alert("חסרות שעות.");
+            startTime = new Date(`${mDate}T${mStart}`);
+            endTime = new Date(`${mDate}T${mEnd}`);
+            if (endTime < startTime) endTime.setDate(endTime.getDate() + 1);
+            totalHours = (endTime - startTime) / 3600000;
+            let payData = calculateShiftPay(startTime, endTime, totalHours, wage);
+            totalPay = payData.totalPay;
+            isWeekend = payData.isWeekend;
+        } else {
+            startTime = new Date(`${mDate}T08:00`);
+            endTime = new Date(`${mDate}T16:36`);
+            totalHours = REGULAR_HOURS;
+            if (type === 'vacation') {
+                totalPay = totalHours * wage;
+                let bal = parseFloat(localStorage.getItem('vacationBalance') || '0');
+                localStorage.setItem('vacationBalance', (bal - 1).toFixed(2));
+            } else if (type === 'sick') {
+                sickDayNum = 1; 
+                totalPay = totalHours * wage; 
+                let bal = parseFloat(localStorage.getItem('sickBalance') || '0');
+                localStorage.setItem('sickBalance', (bal - 1).toFixed(2));
+            }
+        }
+
+        if (editingId) {
+            let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+            let oldS = shifts.find(s => s.id === editingId);
+            // החזרת ימי חופש/מחלה אם שונה
+            if(oldS && oldS.type === 'vacation') {
+                 let bal = parseFloat(localStorage.getItem('vacationBalance') || '0');
+                 localStorage.setItem('vacationBalance', (bal + 1).toFixed(2));
+            }
+            if(oldS && oldS.type === 'sick') {
+                 let bal = parseFloat(localStorage.getItem('sickBalance') || '0');
+                 localStorage.setItem('sickBalance', (bal + 1).toFixed(2));
+            }
+            shifts = shifts.filter(s => s.id !== editingId);
+            localStorage.setItem('shiftsHistory', JSON.stringify(shifts));
+        }
+
+        saveShiftLog(type, startTime, endTime, totalHours, totalPay, sickDayNum, isWeekend);
+        if (editingId) resetEditMode();
+        document.getElementById('manualEntryBox').style.display = 'none';
+    }
+
+    function saveShiftLog(type, start, end, hours, pay, sickDayNum = 0, isWeekend = false) {
+        let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+        shifts.push({
+            id: Date.now(), type, sickDayNum,
+            date: start.toLocaleDateString('he-IL'),
+            monthKey: start.getFullYear() + "-" + String(start.getMonth() + 1).padStart(2, '0'),
+            start: start.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}),
+            end: end.toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'}),
+            hours: hours.toFixed(2),
+            pay: pay.toFixed(2),
+            isWeekend: isWeekend
+        });
+        
+        shifts.sort((a, b) => new Date(a.date.split('.').reverse().join('-') + 'T' + a.start) - new Date(b.date.split('.').reverse().join('-') + 'T' + b.start));
+        localStorage.setItem('shiftsHistory', JSON.stringify(shifts));
+        populateMonthSelector(); 
+        renderLog();
+    }
+
+    function deleteShift(id) {
+        closeAllSwipes();
+        if(confirm("למחוק דיווח זה? (אם זה חופש/מחלה, היום יוחזר ליתרה)")) {
+            let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+            let shiftToDelete = shifts.find(s => s.id === id);
+            
+            if(shiftToDelete && shiftToDelete.type === 'vacation') {
+                 let bal = parseFloat(localStorage.getItem('vacationBalance') || '0');
+                 localStorage.setItem('vacationBalance', (bal + 1).toFixed(2));
+            }
+            if(shiftToDelete && shiftToDelete.type === 'sick') {
+                 let bal = parseFloat(localStorage.getItem('sickBalance') || '0');
+                 localStorage.setItem('sickBalance', (bal + 1).toFixed(2));
+            }
+
+            localStorage.setItem('shiftsHistory', JSON.stringify(shifts.filter(s => s.id !== id)));
+            populateMonthSelector(); renderLog();
+        }
+    }
+
+    function getOptionsHTML(shifts, currentSelected) {
+        let html = "";
+        let monthsSet = new Set();
+        shifts.forEach(s => { if(s.monthKey) monthsSet.add(s.monthKey); });
+        let now = new Date();
+        let currentMonthKey = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, '0');
+        monthsSet.add(currentMonthKey);
+
+        Array.from(monthsSet).sort().reverse().forEach(mKey => {
+            let parts = mKey.split("-");
+            let selectedStr = (mKey === currentSelected) ? "selected" : "";
+            html += `<option value="${mKey}" ${selectedStr}>${hebrewMonths[parseInt(parts[1]) - 1]} ${parts[0]}</option>`;
+        });
+        return html;
+    }
+
+    function populateMonthSelector() {
+        let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+        let select = document.getElementById('monthFilter');
+        let currentSelected = select.value || (new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, '0'));
+        select.innerHTML = getOptionsHTML(shifts, currentSelected);
+    }
+
+    function populateNetMonthSelector() {
+        let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+        let select = document.getElementById('netMonthFilter');
+        let currentSelected = select.value || document.getElementById('monthFilter').value;
+        select.innerHTML = getOptionsHTML(shifts, currentSelected);
+        let savedBonus = localStorage.getItem('bonus_' + currentSelected) || '';
+        document.getElementById('netBonusInput').value = savedBonus;
+    }
+
+    function onNetMonthChange() {
+        let monthKey = document.getElementById('netMonthFilter').value;
+        let savedBonus = localStorage.getItem('bonus_' + monthKey) || '';
+        document.getElementById('netBonusInput').value = savedBonus;
+        renderNetCalculator();
+    }
+    
+    function populateReportMonthSelector() {
+        let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+        let select = document.getElementById('reportMonthFilter');
+        let currentSelected = select.value || document.getElementById('monthFilter').value;
+        select.innerHTML = getOptionsHTML(shifts, currentSelected);
+    }
+
+    const scriptPostUrl = 'https://script.google.com/macros/s/AKfycbz_oBoiUpQ9C_yFsBafkSKjodk1qmuh1sFxnsqFnQ3XHITsWlSOOlLHqgeKqLXlvAgQ/exec';
+    let syncSalaryTimer = null;
+    function syncSalaryToCloud(monthKey, net) {
+        clearTimeout(syncSalaryTimer);
+        syncSalaryTimer = setTimeout(async () => {
+            try {
+                const res = await fetch(scriptPostUrl);
+                const cfg = await res.json();
+                const cats = JSON.parse(cfg.categories || '{}');
+                if (!cats.__liveSalaries) cats.__liveSalaries = {};
+                cats.__liveSalaries[monthKey] = Math.round(net);
+                const payload = {
+                    action: 'save_config',
+                    aliases: cfg.aliases,
+                    categories: JSON.stringify(cats)
+                };
+                fetch(scriptPostUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                });
+            } catch(e) {}
+        }, 1200);
+    }
+
+    function exportAllData() {
+        const data = {
+            shiftsHistory: JSON.parse(localStorage.getItem('shiftsHistory') || '[]'),
+            hourlyWage: localStorage.getItem('hourlyWage'),
+            travelExp: localStorage.getItem('travelExp'),
+            vacationBalance: localStorage.getItem('vacationBalance'),
+            sickBalance: localStorage.getItem('sickBalance'),
+            havraaBalance: localStorage.getItem('havraaBalance'),
+            bonuses: {}
+        };
+        for (let i = 0; i < localStorage.length; i++) {
+            let k = localStorage.key(i);
+            if (k && k.startsWith('bonus_')) data.bonuses[k] = localStorage.getItem(k);
+        }
+        const json = JSON.stringify(data);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(json).then(() => {
+                alert("כל הנתונים (משמרות, בונוסים והגדרות) הועתקו ללוח בהצלחה!");
+            }).catch(() => {
+                prompt("העתק את הטקסט הבא:", json);
+            });
+        } else {
+            prompt("העתק את הטקסט הבא:", json);
+        }
+    }
+
+    function importAllData() {
+        const raw = prompt("הדבק כאן את נתוני הגיבוי (JSON):");
+        if (!raw) return;
+        try {
+            const data = JSON.parse(raw);
+            if (data.shiftsHistory) localStorage.setItem('shiftsHistory', JSON.stringify(data.shiftsHistory));
+            if (data.hourlyWage) localStorage.setItem('hourlyWage', data.hourlyWage);
+            if (data.travelExp) localStorage.setItem('travelExp', data.travelExp);
+            if (data.vacationBalance) localStorage.setItem('vacationBalance', data.vacationBalance);
+            if (data.sickBalance) localStorage.setItem('sickBalance', data.sickBalance);
+            if (data.havraaBalance) localStorage.setItem('havraaBalance', data.havraaBalance);
+            if (data.bonuses) {
+                Object.keys(data.bonuses).forEach(k => localStorage.setItem(k, data.bonuses[k]));
+            }
+            alert("הנתונים שוחזרו בהצלחה!");
+            location.reload();
+        } catch(e) {
+            alert("שגיאה בייבוא הנתונים: פורמט לא תקין");
+        }
+    }
+
+    function renderLog() {
+        let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+        let reportDiv = document.getElementById('report');
+        let selectedMonth = document.getElementById('monthFilter').value;
+        
+        reportDiv.innerHTML = "<h3 style='font-size: 15px; text-align: right; margin-bottom: 10px; color: #3a3a3c;'>פירוט החודש:</h3>";
+        let totalPay = 0, totalHours = 0, shiftsFound = false;
+
+        shifts.slice().reverse().forEach(shift => {
+            if (shift.monthKey === selectedMonth) {
+                shiftsFound = true;
+                let isShort = (parseFloat(shift.hours) <= 5 && (!shift.type || shift.type === 'shift'));
+                let iconHtml = isShort ? warningSvg : '';
+                
+                let badge = '<span class="shift-type-badge badge-shift">משמרת</span>';
+                if (shift.isWeekend) badge = '<span class="shift-type-badge badge-weekend">שבת/חג</span>';
+                if (shift.type === 'vacation') badge = '<span class="shift-type-badge badge-vacation">חופשה</span>';
+                if (shift.type === 'sick') badge = `<span class="shift-type-badge badge-sick">מחלה</span>`;
+                
+                let timeString = (shift.type && shift.type !== 'shift') ? "יום מלא" : `${shift.start} - ${shift.end}`;
+                
+                reportDiv.innerHTML += `
+                    <div class="shift-container" id="shift-container-${shift.id}">
+                        <div class="shift-actions-bg">
+                            <button class="action-btn action-delete" onclick="deleteShift(${shift.id})">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                מחיקה
+                            </button>
+                            <button class="action-btn action-edit" onclick="editShift(${shift.id})">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                                עריכה
+                            </button>
+                        </div>
+                        <div class="shift-card" ontouchstart="handleTouchStart(event, ${shift.id})" ontouchmove="handleTouchMove(event, ${shift.id})" ontouchend="handleTouchEnd(event, ${shift.id})">
+                            <div class="shift-info">
+                                <div class="shift-header-row">
+                                    <div class="shift-header-right">
+                                        ${iconHtml}${badge}
+                                        <span style="font-size: 13px; color: #3a3a3c;"><strong>תאריך:</strong> ${shift.date}</span>
+                                    </div>
+                                    <span class="shift-pay-tag">₪${shift.pay}</span>
+                                </div>
+                                <div style="font-size: 13px; color: #636366; margin-top: 2px;"><strong>שעות:</strong> ${timeString} (${shift.hours} שעות)</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                totalPay += parseFloat(shift.pay);
+                if (!shift.type || shift.type === 'shift') totalHours += parseFloat(shift.hours);
+            }
+        });
+
+        if (!shiftsFound) reportDiv.innerHTML += "<p style='color: #8e8e93; font-size: 14px;'>אין דיווחים לחודש זה.</p>";
+
+        reportDiv.innerHTML = `
+            <div style="background: #f6f6f8; padding: 12px; border-radius: 12px; margin-bottom: 12px; border: 1px solid var(--ios-border);">
+                <h2 style="color:var(--ios-blue); font-size: 18px; margin: 0 0 4px 0;">סה"כ שכר: ₪${totalPay.toFixed(2)}</h2>
+                <h4 style="color:#636366; font-size: 13px; margin: 0; font-weight: normal;">שעות עבודה בפועל: ${totalHours.toFixed(2)}</h4>
+            </div>
+            ` + reportDiv.innerHTML;
+    }
+
+    function renderNetCalculator() {
+        let monthKey = document.getElementById('netMonthFilter').value;
+        let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+        let travel = parseFloat(localStorage.getItem('travelExp') || '1000');
+        let bonusVal = document.getElementById('netBonusInput').value;
+        let bonus = parseFloat(bonusVal || '0');
+        let wage = parseFloat(localStorage.getItem('hourlyWage') || '37.07');
+        
+        if (monthKey) {
+            if (bonusVal) localStorage.setItem('bonus_' + monthKey, bonusVal);
+            else localStorage.removeItem('bonus_' + monthKey);
+        }
+
+        let monthShifts = shifts.filter(s => s.monthKey === monthKey);
+        
+        let pensionableBasePay = 0; 
+        let totalGrossPay = 0;
+        let uniqueWorkDays = new Set();
+
+        monthShifts.forEach(s => {
+            let shiftPay = parseFloat(s.pay || 0);
+            totalGrossPay += shiftPay;
+            
+            if (s.type === 'shift' || !s.type) {
+                uniqueWorkDays.add(s.date); // ספירת ימי עבודה ייחודיים לסיבוס
+                let hrs = parseFloat(s.hours);
+                let regHrs = Math.min(hrs, REGULAR_HOURS);
+                pensionableBasePay += (regHrs * wage);
+            } else if (s.type === 'vacation' || s.type === 'sick') {
+                pensionableBasePay += shiftPay;
+            }
+        });
+        
+        let daysCount = uniqueWorkDays.size;
+        let cibusZkifa = daysCount * 40; // 40 ש"ח לכל יום
+        let cibusNikuy = daysCount * 12; // 12 ש"ח לכל יום יורד מהנטו
+        let fixedZkifot = 20.00 + 42.31; // רט"ן ובריאות
+        let totalZkifot = cibusZkifa + fixedZkifot;
+
+        let physicalGross = totalGrossPay + travel + bonus; 
+        let taxGross = physicalGross + totalZkifot; // הברוטו שממנו מחשבים את המס
+        
+        // תיקון פנסיה: משכר הבסיס והבונוס יחד
+        let pension = (pensionableBasePay + bonus) * 0.07; 
+        
+        // ביטוח לאומי ומס בריאות מחושבים על הברוטו למס
+        let bleumi = (taxGross <= 7522) ? (taxGross * 0.035) : (7522 * 0.035) + ((taxGross - 7522) * 0.12);
+        
+        // מס הכנסה מחושב על הברוטו למס
+        let tax = 0;
+        if (taxGross > 0) tax += Math.min(taxGross, 7010) * 0.10;
+        if (taxGross > 7010) tax += Math.min(taxGross - 7010, 10060 - 7010) * 0.14;
+        if (taxGross > 10060) tax += Math.min(taxGross - 10060, 16150 - 10060) * 0.20;
+        if (taxGross > 16150) tax += Math.min(taxGross - 16150, 22440 - 16150) * 0.31;
+        
+        // קיזוזים ממס הכנסה
+        let creditPointsVal = 2.25 * 242; // 544.5
+        let residentDiscount = Math.min(taxGross, 12220) * 0.07; 
+        let pensionCredit = pension * 0.35; 
+        
+        tax = tax - creditPointsVal - residentDiscount - pensionCredit;
+        if (tax < 0) tax = 0;
+        
+        // הנטו הסופי: ברוטו פיזי (בלי הזקיפות) פחות ניכויי החובה ופחות הניכוי הפיזי של סיבוס
+        let net = physicalGross - pension - bleumi - tax - cibusNikuy;
+        
+        if (monthKey) {
+            localStorage.setItem('salary_net_' + monthKey, net.toFixed(2));
+            syncSalaryToCloud(monthKey, net);
+        }
+        
+        let box = document.getElementById('netResultBox');
+        if (monthShifts.length === 0 && bonus === 0) {
+            box.innerHTML = `<p style="text-align:center; color:var(--ios-gray-text);">בחר חודש עם דיווחים.</p>`;
+            return;
+        }
+        
+        box.innerHTML = `
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span>שכר משעות עבודה:</span> <strong>₪${totalGrossPay.toFixed(2)}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span>נסיעות קבוע:</span> <strong>₪${travel.toFixed(2)}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span>בונוס / תמריץ:</span> <strong>₪${bonus.toFixed(2)}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:13px; color:#5856d6;">
+                <span>זקיפות שכר (סיבוס ${daysCount} ימ', רט"ן, בריאות):</span> <span>+₪${totalZkifot.toFixed(2)}</span>
+            </div>
+            <hr style="border:0; border-top:1px solid var(--ios-border); margin:12px 0;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-weight:bold; color:var(--ios-blue);">
+                <span>ברוטו מחושב למס:</span> <span>₪${taxGross.toFixed(2)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:13px; color:var(--ios-gray-text);">
+                <span>ניכוי פנסיה (7% מבסיס + בונוס):</span> <span style="color:var(--ios-red);">-₪${pension.toFixed(2)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:13px; color:var(--ios-gray-text);">
+                <span>ב.לאומי ובריאות:</span> <span style="color:var(--ios-red);">-₪${bleumi.toFixed(2)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:13px; color:var(--ios-gray-text);">
+                <span>מס הכנסה (משוער):</span> <span style="color:var(--ios-red);">-₪${tax.toFixed(2)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:13px; color:var(--ios-gray-text);">
+                <span>ניכוי סיבוס (${daysCount} ימים X 12₪):</span> <span style="color:var(--ios-red);">-₪${cibusNikuy.toFixed(2)}</span>
+            </div>
+            <div style="background:var(--ios-green); color:white; padding:15px; border-radius:12px; text-align:center;">
+                <h2 style="margin:0; font-size:24px;">נטו לתשלום: ₪${net.toFixed(2)}</h2>
+            </div>
+    }
+
+    function generatePDF(type) {
+        let selectedMonthKey = document.getElementById('reportMonthFilter').value;
+        let parts = selectedMonthKey.split("-");
+        let monthName = hebrewMonths[parseInt(parts[1]) - 1];
+        let year = parts[0];
+
+        let shifts = JSON.parse(localStorage.getItem('shiftsHistory')) || [];
+        let monthShifts = shifts.filter(s => s.monthKey === selectedMonthKey);
+
+        if (monthShifts.length === 0) return alert("אין דיווחים לחודש הנבחר.");
+
+        let totalPay = 0, totalHours = 0, totalDays = 0, totalOt125 = 0, totalOt150 = 0, weekendHours = 0;
+
+        monthShifts.forEach(s => {
+            totalPay += parseFloat(s.pay);
+            if (!s.type || s.type === 'shift') {
+                totalHours += parseFloat(s.hours);
+                totalDays++;
+                let hrs = parseFloat(s.hours);
+                if (s.isWeekend) {
+                    weekendHours += hrs;
+                } else {
+                    totalOt125 += Math.max(0, Math.min(hrs - REGULAR_HOURS, 2));
+                    totalOt150 += Math.max(0, hrs - (REGULAR_HOURS + 2));
+                }
+            } else { totalDays++; }
+        });
+
+        let printWindow = window.open('', '_blank');
+        let htmlContent = `
+            <!DOCTYPE html>
+            <html lang="he" dir="rtl">
+            <head>
+                <meta charset="UTF-8">
+                <title>דוח נוכחות - ${monthName} ${year}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; direction: rtl; text-align: right; }
+                    h2, h3 { color: #007aff; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+                    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+                    th { background-color: #f2f2f7; }
+                    .summary-box { background: #f9f9fb; border: 1px solid #e5e5ea; padding: 12px; border-radius: 8px; }
+                </style>
+            </head>
+            <body>
+                <h2>דוח נוכחות - ${type === 'short' ? 'מקוצר' : 'מפורט'} | ${monthName} ${year}</h2>
+                <div class="summary-box">
+                    <p>ימי עבודה: ${totalDays} | סה"כ שעות בפועל: ${totalHours.toFixed(2)}</p>
+                    ${type === 'detailed' ? `<p>שעות 125%: ${totalOt125.toFixed(2)} | שעות 150%: ${totalOt150.toFixed(2)} \vert{} שעות שבת/חג: ${weekendHours.toFixed(2)}</p>` : ''}
+                    <h3 style="color: #34c759;">שכר משוער (לפני נסיעות ובונוס): ₪${totalPay.toFixed(2)}</h3>
+                </div>
+        `;
+
+        if (type === 'detailed') {
+            htmlContent += `
+                <table><thead><tr><th>תאריך</th><th>סוג</th><th>שעות</th><th>סה"כ</th><th>רגילות</th><th>125%</th><th>150%</th><th>שכר יומי</th></tr></thead><tbody>
+            `;
+            monthShifts.forEach(s => {
+                let isShift = (!s.type || s.type === 'shift');
+                let typeLbl = s.isWeekend ? "שבת/חג" : (isShift ? "משמרת" : (s.type==='vacation'?"חופשה":"מחלה"));
+                let time = isShift ? `${s.start} - ${s.end}` : "יום מלא";
+                let hrs = isShift ? parseFloat(s.hours) : REGULAR_HOURS;
+                let reg = Math.min(hrs, REGULAR_HOURS).toFixed(2);
+                let ot125 = isShift && !s.isWeekend ? Math.max(0, Math.min(hrs - REGULAR_HOURS, 2)).toFixed(2) : "0.00";
+                let ot150 = isShift && !s.isWeekend ? Math.max(0, hrs - (REGULAR_HOURS + 2)).toFixed(2) : "0.00";
+                
+                if(s.isWeekend) { reg="0.00"; ot125="0.00"; ot150=hrs.toFixed(2); }
+
+                htmlContent += `<tr><td>${s.date}</td><td>${typeLbl}</td><td>${time}</td><td>${s.hours}</td><td>${reg}</td><td>${ot125}</td><td>${ot150}</td><td>₪${s.pay}</td></tr>`;
+            });
+            htmlContent += `</tbody></table>`;
+        }
+
+        htmlContent += `<script>window.onload=function(){window.print();}<\/script></body></html>`;
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+    }
+
+    // ג'סטות Swipe
+    let touchStartX = 0; let touchCurrentX = 0;
+    function handleTouchStart(e, id) { touchStartX = e.touches[0].clientX; touchCurrentX = touchStartX; }
+    function handleTouchMove(e, id) {
+        touchCurrentX = e.touches[0].clientX;
+        let diff = touchCurrentX - touchStartX;
+        let card = document.querySelector(`#shift-container-${id} .shift-card`);
+        if (openSwipeId !== id && diff < 0 && diff > -160) card.style.transform = `translateX(${diff}px)`;
+    }
+    function handleTouchEnd(e, id) {
+        let card = document.querySelector(`#shift-container-${id} .shift-card`);
+        let diff = touchCurrentX - touchStartX;
+        if (openSwipeId !== id && diff < -60) { closeAllSwipes(); card.style.transform = `translateX(-150px)`; openSwipeId = id; } 
+        else { card.style.transform = `translateX(0px)`; if(openSwipeId === id) openSwipeId = null; }
+    }
+    function closeAllSwipes() { document.querySelectorAll('.shift-card').forEach(c => c.style.transform = `translateX(0px)`); openSwipeId = null; }
+
+    window.onload = function() {
+        initializeDefaults();
+        updateActiveState();
+        populateMonthSelector();
+        renderLog();
+    }
+</script>
+
+</body>
+</html>
