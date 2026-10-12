@@ -475,12 +475,35 @@
 
         const defaultRecurring = [
             { id: 'rec-arnona', alias: 'ארנונה', amount: 1200, method: 'אשראי', type: 'קבועה' },
-            { id: 'rec-vaad', alias: 'ועד בית', amount: 270, method: 'העברה בנקאית', type: 'קבועה' }
+            { id: 'rec-vaad', alias: 'ועד בית', amount: 270, method: 'העברה בנקאית', type: 'קבועה' },
+            { id: 'rec-menora-health', alias: 'ביטוח בריאות - מנורה', amount: 188.25, method: 'אשראי', type: 'קבועה' },
+            { id: 'rec-menora-life', alias: 'ביטוח חיים - מנורה', amount: 41.1, method: 'דיירקט', type: 'קבועה' },
+            { id: 'rec-office365', alias: 'Office365', amount: 10, method: 'דיירקט', type: 'קבועה' },
+            { id: 'rec-apple-subs', alias: 'Apple - מנויים', amount: 26, method: 'דיירקט', type: 'קבועה' },
+            { id: 'rec-maccabi', alias: 'קופ״ח - מכבי שלי', amount: 115, method: 'דיירקט', type: 'קבועה' },
+            { id: 'rec-ravkav', alias: 'טעינת רב קו', amount: 161.5, method: 'אשראי', type: 'קבועה' }
         ];
+        // מעלים את הגרסה כשמשנים את ברירות המחדל כדי שהן ימוזגו פעם אחת לרשימה השמורה בטלפון
+        const RECURRING_DEFAULTS_VERSION = '2';
+
+        function loadRecurring() {
+            let stored = null;
+            try { stored = JSON.parse(localStorage.getItem('smartbudget_recurring')); } catch (e) {}
+            if (!Array.isArray(stored)) return defaultRecurring.map(d => ({ ...d }));
+            if (localStorage.getItem('smartbudget_recurring_v') !== RECURRING_DEFAULTS_VERSION) {
+                defaultRecurring.forEach(d => {
+                    const i = stored.findIndex(r => r.id === d.id || r.alias === d.alias);
+                    if (i > -1) stored[i] = { ...d }; else stored.push({ ...d });
+                });
+                localStorage.setItem('smartbudget_recurring', JSON.stringify(stored));
+                localStorage.setItem('smartbudget_recurring_v', RECURRING_DEFAULTS_VERSION);
+            }
+            return stored;
+        }
 
         let businessAliases = JSON.parse(localStorage.getItem('smartbudget_aliases')) || defaultAliases;
         let categoriesData = JSON.parse(localStorage.getItem('smartbudget_categories')) || defaultCategories;
-        let recurringMonthly = JSON.parse(localStorage.getItem('smartbudget_recurring')) || defaultRecurring;
+        let recurringMonthly = loadRecurring();
 
         function saveRecurring() {
             localStorage.setItem('smartbudget_recurring', JSON.stringify(recurringMonthly));
@@ -927,8 +950,8 @@
             if (!alias) return;
             const amount = parseFloat(prompt("סכום קבוע כל חודש:"));
             if (!amount || amount <= 0) { alert("סכום לא תקין"); return; }
-            const methodChoice = prompt("שיטת תשלום: 1 = אשראי, 2 = העברה בנקאית", "1");
-            const method = methodChoice === '2' ? 'העברה בנקאית' : 'אשראי';
+            const methodChoice = prompt("שיטת תשלום: 1 = אשראי, 2 = העברה בנקאית, 3 = דיירקט", "1");
+            const method = methodChoice === '2' ? 'העברה בנקאית' : (methodChoice === '3' ? 'דיירקט' : 'אשראי');
             recurringMonthly.push({ id: 'rec-' + Date.now(), alias: alias.trim(), amount, method, type: 'קבועה' });
             saveRecurring();
             renderRecurringManager();
@@ -941,10 +964,10 @@
             if (!alias) return;
             const amount = parseFloat(prompt("סכום קבוע כל חודש:", item.amount));
             if (!amount || amount <= 0) { alert("סכום לא תקין"); return; }
-            const methodChoice = prompt("שיטת תשלום: 1 = אשראי, 2 = העברה בנקאית", item.method === 'העברה בנקאית' ? '2' : '1');
+            const methodChoice = prompt("שיטת תשלום: 1 = אשראי, 2 = העברה בנקאית, 3 = דיירקט", item.method === 'העברה בנקאית' ? '2' : (item.method === 'דיירקט' ? '3' : '1'));
             item.alias = alias.trim();
             item.amount = amount;
-            item.method = methodChoice === '2' ? 'העברה בנקאית' : 'אשראי';
+            item.method = methodChoice === '2' ? 'העברה בנקאית' : (methodChoice === '3' ? 'דיירקט' : 'אשראי');
             saveRecurring();
             renderRecurringManager();
         }
