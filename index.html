@@ -158,7 +158,7 @@
                     </div>
                     <div>
                         <h3 style="margin:0; font-size:18px;">תחזית ותשלומים</h3>
-                        <p style="margin:4px 0 0; font-size:13px; color:var(--text-secondary);">חצי שנה קדימה ויתרות תשלומים</p>
+                        <p id="forecastCardSub" style="margin:4px 0 0; font-size:13px; color:var(--text-secondary);">חצי שנה קדימה ויתרות תשלומים</p>
                     </div>
                 </div>
                 <span style="color:var(--text-secondary);">❯</span>
@@ -175,6 +175,22 @@
                     <div>
                         <h3 style="margin:0; font-size:18px;">שעון נוכחות ושכר</h3>
                         <p id="workCardSub" style="margin:4px 0 0; font-size:13px; color:var(--text-secondary);">מעקב משמרות, שכר נטו וסנכרון לתקציב</p>
+                    </div>
+                </div>
+                <span style="color:var(--text-secondary);">❯</span>
+            </div>
+        </div>
+
+        <!-- קוביה: קופת חיסכון ויעדים (20%) -->
+        <div class="glass-card" onclick="openSavingsVault()" style="border:1px solid rgba(255,214,10,0.25);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="background:linear-gradient(135deg, #ffd60a, #ff9f0a); width:36px; height:36px; border-radius:12px; display:flex; justify-content:center; align-items:center;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.5-1 2-2.5V5z"></path><circle cx="8" cy="11" r="1"></circle></svg>
+                    </div>
+                    <div>
+                        <h3 style="margin:0; font-size:18px;">קופת חיסכון ויעדים (20%)</h3>
+                        <p id="savingsCardSub" style="margin:4px 0 0; font-size:13px; color:var(--text-secondary);">יעד החודש: ₪0 · טרם סומן</p>
                     </div>
                 </div>
                 <span style="color:var(--text-secondary);">❯</span>
@@ -318,6 +334,15 @@
             <h3 style="margin-top:0; text-align:center;">תחזית ותשלומים</h3>
             <div id="forecastBody" class="mgmt-list"></div>
             <button class="action-btn" onclick="closeModal('forecastModal')">סגור</button>
+        </div>
+    </div>
+
+    <!-- מודל קופת חיסכון ויעדים -->
+    <div id="savingsModal" class="modal-overlay hidden">
+        <div class="modal-content glass-card" style="height:85vh; display:flex; flex-direction:column;">
+            <h3 style="margin-top:0; text-align:center;">קופת חיסכון ויעדים (20%)</h3>
+            <div id="savingsModalBody" class="mgmt-list" style="flex-grow:1; overflow-y:auto;"></div>
+            <button class="action-btn" onclick="closeModal('savingsModal')">סגור</button>
         </div>
     </div>
 
@@ -550,6 +575,9 @@
             { id: 'rec-arnona', alias: 'ארנונה', amount: 600, method: 'אשראי', type: 'קבועה' },
             { id: 'rec-vaad', alias: 'ועד בית', amount: 270, method: 'העברה בנקאית', type: 'קבועה' },
             { id: 'rec-cellcom', alias: 'סלולר+אינטרנט+TV (סלקום)', amount: 179, method: 'הוראת קבע', type: 'קבועה' },
+            { id: 'rec-water', alias: 'חשבון מים', amount: 100, method: 'הוראת קבע', type: 'קבועה' },
+            { id: 'rec-electricity', alias: 'חשבון חשמל (סלקום)', amount: 250, method: 'הוראת קבע', type: 'קבועה' },
+            { id: 'rec-gas', alias: 'חשבון גז (פז גז)', amount: 50, method: 'הוראת קבע', type: 'קבועה' },
             { id: 'rec-menora-health', alias: 'ביטוח בריאות - מנורה', amount: 188.25, method: 'אשראי', type: 'קבועה' },
             { id: 'rec-menora-life', alias: 'ביטוח חיים - מנורה', amount: 41.1, method: 'דיירקט', type: 'קבועה' },
             { id: 'rec-office365', alias: 'Office365', amount: 10, method: 'דיירקט', type: 'קבועה' },
@@ -558,7 +586,7 @@
             { id: 'rec-ravkav', alias: 'טעינת רב קו', amount: 161.5, method: 'אשראי', type: 'קבועה' }
         ];
         // מעלים את הגרסה כשמשנים את ברירות המחדל כדי שהן ימוזגו פעם אחת לרשימה השמורה בטלפון
-        const RECURRING_DEFAULTS_VERSION = '3';
+        const RECURRING_DEFAULTS_VERSION = '4';
 
         function loadRecurring() {
             let stored = null;
@@ -579,13 +607,16 @@
         let categoriesData = JSON.parse(localStorage.getItem('smartbudget_categories')) || defaultCategories;
         let recurringMonthly = loadRecurring();
         let cloudSalaries = {};
+        let savingsTransferredMap = {};
+        try { savingsTransferredMap = JSON.parse(localStorage.getItem('smartbudget_savings_transferred') || '{}'); } catch(e) {}
 
         // הרשימה של ההוצאות הקבועות והשכר המשוער נשמרים בענן בתוך אובייקט הקטגוריות
         function buildCategoriesPayload() {
             return JSON.stringify({ 
                 ...categoriesData, 
                 __recurring: recurringMonthly,
-                __liveSalaries: cloudSalaries 
+                __liveSalaries: cloudSalaries,
+                __savingsTransferred: savingsTransferredMap
             });
         }
 
@@ -633,6 +664,10 @@
                     if (cats.__liveSalaries && typeof cats.__liveSalaries === 'object') {
                         cloudSalaries = cats.__liveSalaries;
                     }
+                    if (cats.__savingsTransferred && typeof cats.__savingsTransferred === 'object') {
+                        savingsTransferredMap = { ...savingsTransferredMap, ...cats.__savingsTransferred };
+                        localStorage.setItem('smartbudget_savings_transferred', JSON.stringify(savingsTransferredMap));
+                    }
                     if (Array.isArray(cats.__recurring)) {
                         recurringMonthly = cats.__recurring;
                         cloudHasRecurring = true;
@@ -640,6 +675,7 @@
                     }
                     delete cats.__recurring;
                     delete cats.__liveSalaries;
+                    delete cats.__savingsTransferred;
                     categoriesData = cats;
                 }
                 
@@ -1009,6 +1045,31 @@
                         workSub.innerText = `נצבר החודש לתשלום ב-10 לחודש הבא: ₪${currentEarned.toLocaleString()}`;
                     } else {
                         workSub.innerText = 'מעקב משמרות, שכר נטו וסנכרון לתקציב';
+                    }
+                }
+
+                // עדכון כרטיס תחזית ותשלומים (אבן דרך קרובה)
+                const forecastSub = document.getElementById('forecastCardSub');
+                if (forecastSub) {
+                    const groups = getInstallmentGroups();
+                    if (groups.length > 0) {
+                        const earliest = groups[0];
+                        const freeKey = earliest.endKey + 1;
+                        forecastSub.innerHTML = `<span style="color:var(--accent-green); font-weight:600;">🎉 ב-${keyLabel(freeKey)} מתפנים +${fmtMoney(earliest.amount)}/חודש</span> (${escHtml(earliest.alias)})`;
+                    } else {
+                        forecastSub.innerText = 'חצי שנה קדימה ויתרות תשלומים';
+                    }
+                }
+
+                // עדכון כרטיס קופת חיסכון
+                const savingsSub = document.getElementById('savingsCardSub');
+                if (savingsSub) {
+                    const viewMonthKey = currentViewYear + '-' + String(currentViewMonth).padStart(2, '0');
+                    const isSaved = !!savingsTransferredMap[viewMonthKey];
+                    if (isSaved) {
+                        savingsSub.innerHTML = `<span style="color:var(--accent-green); font-weight:600;">✅ הועברו ₪${Math.round(savingsGoal).toLocaleString()} לחיסכון</span> · לחץ לצפייה בקופה`;
+                    } else {
+                        savingsSub.innerHTML = `יעד החודש: ₪${Math.round(savingsGoal).toLocaleString()} · <span style="color:var(--accent-orange);">טרם סומן (הפקדה ב-10)</span>`;
                     }
                 }
 
@@ -1847,6 +1908,47 @@
 
         window.openForecast = function() {
             const nowKey = nowMonthKey();
+            const groups = getInstallmentGroups();
+
+            // מפת שחרור כספים (Milestones)
+            let milestoneHtml = '';
+            if (groups.length > 0) {
+                const milestoneMap = {};
+                groups.forEach(g => {
+                    const freeKey = g.endKey + 1; // החודש שבו התשלום כבר לא קיים
+                    if (!milestoneMap[freeKey]) milestoneMap[freeKey] = { freedMonthly: 0, items: [] };
+                    milestoneMap[freeKey].freedMonthly += g.amount;
+                    milestoneMap[freeKey].items.push(g.alias);
+                });
+                
+                const sortedMilestoneKeys = Object.keys(milestoneMap).map(Number).sort((a,b) => a - b);
+                let cumulativeFreed = 0;
+                let milestoneCardsHtml = '';
+                sortedMilestoneKeys.forEach(mKey => {
+                    const mData = milestoneMap[mKey];
+                    cumulativeFreed += mData.freedMonthly;
+                    milestoneCardsHtml += `
+                    <div style="background:rgba(52,199,89,0.12); border:1px solid rgba(52,199,89,0.35); border-radius:10px; padding:10px; margin-bottom:8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-weight:700; color:var(--accent-green);">🎉 החל מ-${keyLabel(mKey)}</span>
+                            <span style="font-size:13px; font-weight:800; color:var(--accent-green);">+${fmtMoney(mData.freedMonthly)} / חודש</span>
+                        </div>
+                        <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">סיום: ${mData.items.map(escHtml).join(', ')}</div>
+                        <div style="font-size:11px; color:#34c759; margin-top:2px;">סה״כ תקציב פנוי מצטבר שמשתחרר: +${fmtMoney(cumulativeFreed)} לחודש!</div>
+                    </div>`;
+                });
+                
+                milestoneHtml = `
+                <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(52,199,89,0.35); border-radius:14px; padding:12px; margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-size:15px; font-weight:700; color:#34c759;">מפת שחרור כספים (Milestones) 🚀</span>
+                        <span style="font-size:11px; background:rgba(52,199,89,0.2); color:#34c759; padding:2px 6px; border-radius:6px; font-weight:700;">+${fmtMoney(cumulativeFreed)} סה״כ</span>
+                    </div>
+                    <div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">מועדי סיום התשלומים והתוספת החודשית שתשתחרר ישירות לעו״ש:</div>
+                    ${milestoneCardsHtml}
+                </div>`;
+            }
+
             const buckets = {};
             for (let i = 0; i < 6; i++) buckets[nowKey + i] = { fixed: 0, inst: 0, other: 0, income: 0, hasLiveSalary: false };
             allTransactions.forEach(tx => {
@@ -1866,7 +1968,7 @@
             const keys = Object.keys(buckets).map(Number);
             const maxTotal = Math.max(1, ...keys.map(k => buckets[k].fixed + buckets[k].inst + buckets[k].other));
 
-            let html = `<div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">הוצאות ידועות והכנסות צפויות ל-6 חודשים קדימה (כולל שכר משוער משעות עבודה).</div>`;
+            let html = milestoneHtml + `<div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">הוצאות ידועות והכנסות צפויות ל-6 חודשים קדימה (כולל שכר משוער משעות עבודה).</div>`;
             keys.forEach((k, idx) => {
                 const b = buckets[k];
                 const total = b.fixed + b.inst + b.other;
@@ -1887,7 +1989,6 @@
                 </div>`;
             });
 
-            const groups = getInstallmentGroups();
             html += `<h3 style="margin:18px 0 8px; font-size:16px;">תשלומים פעילים</h3>`;
             if (!groups.length) {
                 html += `<p style="text-align:center; color:var(--text-secondary);">אין עסקאות תשלומים פעילות</p>`;
@@ -1909,7 +2010,107 @@
             }
             document.getElementById('forecastBody').innerHTML = html;
             document.getElementById('forecastModal').classList.remove('hidden');
-        }
+        };
+
+        // ==========================================
+        //         קופת חיסכון ויעדים (20%)
+        // ==========================================
+        window.openSavingsVault = function() {
+            renderSavingsModal();
+            document.getElementById('savingsModal').classList.remove('hidden');
+        };
+
+        window.toggleSavingsTransferred = function(monthKey) {
+            savingsTransferredMap[monthKey] = !savingsTransferredMap[monthKey];
+            localStorage.setItem('smartbudget_savings_transferred', JSON.stringify(savingsTransferredMap));
+            pushConfigToCloud();
+            processAndRender();
+            renderSavingsModal();
+        };
+
+        function renderSavingsModal() {
+            const viewMonthKey = currentViewYear + '-' + String(currentViewMonth).padStart(2, '0');
+            
+            let viewIncome = 0;
+            allTransactions.forEach(tx => {
+                if (tx.year === currentViewYear && tx.month === currentViewMonth && tx.type === 'הכנסה') {
+                    viewIncome += tx.amount;
+                }
+            });
+            let baseIncome = viewIncome > 0 ? viewIncome : 11000;
+            let targetAmount = Math.round(baseIncome * 0.20);
+            const isTransferred = !!savingsTransferredMap[viewMonthKey];
+            
+            let totalAccumulated = 0;
+            let confirmedCount = 0;
+            
+            const monthsSet = new Set();
+            allTransactions.forEach(tx => {
+                monthsSet.add(tx.year + '-' + String(tx.month).padStart(2, '0'));
+            });
+            Object.keys(savingsTransferredMap).forEach(mk => monthsSet.add(mk));
+            
+            const sortedMonths = Array.from(monthsSet).sort().reverse();
+            
+            const incomeByMonth = {};
+            allTransactions.forEach(tx => {
+                if (tx.type === 'הכנסה') {
+                    const mk = tx.year + '-' + String(tx.month).padStart(2, '0');
+                    incomeByMonth[mk] = (incomeByMonth[mk] || 0) + tx.amount;
+                }
+            });
+            
+            sortedMonths.forEach(mk => {
+                if (savingsTransferredMap[mk]) {
+                    const inc = incomeByMonth[mk] || 11000;
+                    totalAccumulated += Math.round(inc * 0.20);
+                    confirmedCount++;
+                }
+            });
+            
+            let html = `
+            <div style="background:linear-gradient(135deg, rgba(255,214,10,0.18), rgba(255,159,10,0.12)); border:1px solid rgba(255,214,10,0.4); border-radius:14px; padding:16px; margin-bottom:16px; text-align:center;">
+                <div style="font-size:13px; color:var(--text-secondary);">סה״כ נצבר בקופת החיסכון</div>
+                <div style="font-size:32px; font-weight:800; color:#ffd60a; margin:4px 0;">₪${totalAccumulated.toLocaleString()}</div>
+                <div style="font-size:12px; color:var(--text-secondary);">${confirmedCount} חודשים סומנו כהפקדות מלאות לחיסכון</div>
+            </div>
+            
+            <div style="background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:14px; padding:14px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="font-size:16px; font-weight:700;">חודש נבחר: ${monthNames[currentViewMonth - 1]} ${currentViewYear}</span>
+                    <span style="font-size:14px; font-weight:700; color:#ffd60a;">יעד: ₪${targetAmount.toLocaleString()}</span>
+                </div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-bottom:12px;">יעד החיסכון החודשי לפי כלל ה-20% מההכנסות. מומלץ להעביר לפק״מ / קופת גמל בכל 10 לחודש.</div>
+                <button class="action-btn" style="${isTransferred ? 'background:rgba(52,199,89,0.2); border:1px solid var(--accent-green); color:var(--accent-green); font-weight:700;' : 'background:linear-gradient(135deg, #ffd60a, #ff9f0a); color:#000; font-weight:700;'}" onclick="toggleSavingsTransferred('${viewMonthKey}')">
+                    ${isTransferred ? '✅ סומן: הועבר לחיסכון (לחץ לביטול)' : '💸 סמן שהפקדתי ₪' + targetAmount.toLocaleString() + ' לחיסכון החודש'}
+                </button>
+            </div>
+            
+            <h4 style="margin:16px 0 8px; font-size:15px;">היסטוריית חודשים ויעדים</h4>
+            `;
+            
+            sortedMonths.slice(0, 8).forEach(mk => {
+                const parts = mk.split('-');
+                const y = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10);
+                const inc = incomeByMonth[mk] || 11000;
+                const tgt = Math.round(inc * 0.20);
+                const done = !!savingsTransferredMap[mk];
+                
+                html += `
+                <div class="mgmt-item" style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-weight:600; font-size:14px;">${monthNames[m - 1]} ${y}</div>
+                        <div style="font-size:12px; color:var(--text-secondary);">יעד: ₪${tgt.toLocaleString()}</div>
+                    </div>
+                    <button class="btn-small" style="${done ? 'background:rgba(52,199,89,0.25); color:var(--accent-green); border:0.5px solid var(--accent-green);' : 'background:rgba(255,255,255,0.08); color:var(--text-secondary);'}" onclick="toggleSavingsTransferred('${mk}')">
+                        ${done ? '✅ הועבר' : 'סמן כהופקד'}
+                    </button>
+                </div>`;
+            });
+            
+            document.getElementById('savingsModalBody').innerHTML = html;
+        };
 
         // ==========================================
         //         עסקאות לא מסווגות
