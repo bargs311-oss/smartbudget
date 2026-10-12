@@ -614,6 +614,22 @@
 
         let businessAliases = JSON.parse(localStorage.getItem('smartbudget_aliases')) || defaultAliases;
         let categoriesData = JSON.parse(localStorage.getItem('smartbudget_categories')) || defaultCategories;
+        let cloudExtraData = {};
+
+        function sanitizeCategories(raw) {
+            if (!raw || typeof raw !== 'object') return {};
+            const clean = {};
+            for (const k of Object.keys(raw)) {
+                if (k.startsWith('__')) {
+                    cloudExtraData[k] = raw[k];
+                } else if (typeof raw[k] === 'object' && raw[k] !== null && !Array.isArray(raw[k])) {
+                    clean[k] = raw[k];
+                }
+            }
+            return clean;
+        }
+
+        categoriesData = sanitizeCategories(categoriesData);
         let recurringMonthly = loadRecurring();
         let cloudSalaries = {};
         let savingsTransferredMap = {};
@@ -623,6 +639,7 @@
         function buildCategoriesPayload() {
             return JSON.stringify({ 
                 ...categoriesData, 
+                ...cloudExtraData,
                 __recurring: recurringMonthly,
                 __liveSalaries: cloudSalaries,
                 __savingsTransferred: savingsTransferredMap
@@ -682,10 +699,7 @@
                         cloudHasRecurring = true;
                         localStorage.setItem('smartbudget_recurring', JSON.stringify(recurringMonthly));
                     }
-                    delete cats.__recurring;
-                    delete cats.__liveSalaries;
-                    delete cats.__savingsTransferred;
-                    categoriesData = cats;
+                    categoriesData = sanitizeCategories(cats);
                 }
                 
                 // עדכון הזיכרון המקומי לנתונים מהענן
@@ -1139,7 +1153,9 @@
             
             // התיקון הגדול! מעדכן גם במנהל הקטגוריות
             for (let main in categoriesData) {
+                if (main.startsWith('__') || typeof categoriesData[main] !== 'object' || !categoriesData[main]) continue;
                 for (let sub in categoriesData[main]) {
+                    if (!Array.isArray(categoriesData[main][sub])) continue;
                     const idx = categoriesData[main][sub].indexOf(oldAlias);
                     if (idx > -1) {
                         categoriesData[main][sub][idx] = newAlias;
@@ -1162,6 +1178,7 @@
             const list = document.getElementById('categoriesList');
             let html = '';
             Object.keys(categoriesData).forEach((mainCat, mainIdx) => {
+                if (mainCat.startsWith('__') || typeof categoriesData[mainCat] !== 'object' || !categoriesData[mainCat]) return;
                 html += `<div class="mgmt-item">
                             <div class="mgmt-title" onclick="document.getElementById('mcat-${mainIdx}').classList.toggle('open')">
                                 ${mainCat} <span style="font-size:12px;">▼</span>
@@ -1532,7 +1549,9 @@
         function calculateMonthlyData() {
             let reverseAliasMap = {};
             for (let main in categoriesData) {
+                if (main.startsWith('__') || typeof categoriesData[main] !== 'object' || !categoriesData[main]) continue;
                 for (let sub in categoriesData[main]) {
+                    if (!Array.isArray(categoriesData[main][sub])) continue;
                     categoriesData[main][sub].forEach(alias => {
                         reverseAliasMap[alias] = { main, sub };
                     });
@@ -1550,8 +1569,10 @@
             let currentKey = currentViewYear * 12 + currentViewMonth;
 
             for (let main in categoriesData) {
+                if (main.startsWith('__') || typeof categoriesData[main] !== 'object' || !categoriesData[main]) continue;
                 currentMain[main] = 0;
                 for (let sub in categoriesData[main]) {
+                    if (!Array.isArray(categoriesData[main][sub])) continue;
                     currentSub[sub] = 0;
                     pastSub[sub] = 0;
                     categoriesData[main][sub].forEach(a => {
@@ -1597,7 +1618,7 @@
             let html = '';
             let idx = 0;
             for (let main in categoriesData) {
-                if (main === 'הכנסה' || main === 'הכנסות') continue; 
+                if (main.startsWith('__') || main === 'הכנסה' || main === 'הכנסות' || typeof categoriesData[main] !== 'object' || !categoriesData[main]) continue; 
                 
                 let color = catColors[idx % catColors.length];
                 let amount = monthlyDataCache.currentMain[main] || 0;
@@ -1622,52 +1643,55 @@
             document.getElementById('monthlyModalTitle').innerText = mainCat;
 
             let html = '';
-            Object.keys(categoriesData[mainCat]).forEach((subCat, sIdx) => {
-                let currentAmt = monthlyDataCache.currentSub[subCat] || 0;
-                let pastAvg = (monthlyDataCache.pastSub[subCat] / monthlyDataCache.pastCount) || 0;
+            if (categoriesData[mainCat] && typeof categoriesData[mainCat] === 'object') {
+                Object.keys(categoriesData[mainCat]).forEach((subCat, sIdx) => {
+                    if (!Array.isArray(categoriesData[mainCat][subCat])) return;
+                    let currentAmt = monthlyDataCache.currentSub[subCat] || 0;
+                    let pastAvg = (monthlyDataCache.pastSub[subCat] / monthlyDataCache.pastCount) || 0;
 
-                const groupId = `m-sub-${sIdx}`;
-                const chevronId = `m-chev-${sIdx}`;
+                    const groupId = `m-sub-${sIdx}`;
+                    const chevronId = `m-chev-${sIdx}`;
 
-                html += `
-                <div class="group-header" onclick="toggleGroup('${groupId}', '${chevronId}')" style="margin-bottom:4px;">
-                    <div style="flex-grow:1;">
-                        <div style="font-size:16px; font-weight:600;">${subCat}</div>
-                        <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">ממוצע חודשי בעבר: ₪${pastAvg.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+                    html += `
+                    <div class="group-header" onclick="toggleGroup('${groupId}', '${chevronId}')" style="margin-bottom:4px;">
+                        <div style="flex-grow:1;">
+                            <div style="font-size:16px; font-weight:600;">${subCat}</div>
+                            <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">ממוצע חודשי בעבר: ₪${pastAvg.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+                        </div>
+                        <div style="text-align:left; display:flex; align-items:center;">
+                            <span style="font-weight:700; font-size:16px;">₪${currentAmt.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+                            <div id="${chevronId}" class="chevron" style="margin-right:8px;">▼</div>
+                        </div>
                     </div>
-                    <div style="text-align:left; display:flex; align-items:center;">
-                        <span style="font-weight:700; font-size:16px;">₪${currentAmt.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
-                        <div id="${chevronId}" class="chevron" style="margin-right:8px;">▼</div>
-                    </div>
-                </div>
-                <ul id="${groupId}" class="nested-list" style="margin-bottom:10px;">`;
+                    <ul id="${groupId}" class="nested-list" style="margin-bottom:10px;">`;
 
-                categoriesData[mainCat][subCat].forEach(alias => {
-                    let aCur = monthlyDataCache.currentAlias[alias] || 0;
-                    let aPastAvg = (monthlyDataCache.pastAlias[alias] / monthlyDataCache.pastCount) || 0;
-                    const rec = recurringMonthly.find(r => r.alias === alias);
-                    const recLabel = rec ? ` - ${methodShortLabel(rec.method)}` : '';
-                    const recHint = rec ? `<span style="font-size:9px; background:rgba(10,132,255,0.2); color:var(--accent-blue); padding:2px 5px; border-radius:4px; margin-left:6px;">קבוע</span> ` : '';
+                    categoriesData[mainCat][subCat].forEach(alias => {
+                        let aCur = monthlyDataCache.currentAlias[alias] || 0;
+                        let aPastAvg = (monthlyDataCache.pastAlias[alias] / monthlyDataCache.pastCount) || 0;
+                        const rec = recurringMonthly.find(r => r.alias === alias);
+                        const recLabel = rec ? ` - ${methodShortLabel(rec.method)}` : '';
+                        const recHint = rec ? `<span style="font-size:9px; background:rgba(10,132,255,0.2); color:var(--accent-blue); padding:2px 5px; border-radius:4px; margin-left:6px;">קבוע</span> ` : '';
 
-                    if (aCur > 0) {
-                        const inst = getInstallmentInfo(alias);
-                        const instHint = inst ? `<span style="font-size:9px; background:var(--accent-blue); color:white; padding:2px 5px; border-radius:4px; margin-left:6px;">תשלום ${inst.n}/${inst.total}</span> ` : '';
-                        const instLine = inst ? `<div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">יתרה: ₪${inst.remainingAmount.toLocaleString(undefined, {maximumFractionDigits:0})} · נותרו ${inst.remainingCount} תשלומים</div>` : '';
-                        html += `
-                        <li style="display:flex; justify-content:space-between; padding:10px 15px; border-bottom:0.5px solid rgba(255,255,255,0.05); background:rgba(0,0,0,0.2);">
-                            <div><span>${recHint}${instHint}${alias}${recLabel}</span>${instLine}</div>
-                            <span style="font-weight:600;">₪${aCur.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
-                        </li>`;
-                    } else {
-                        html += `
-                        <li style="display:flex; justify-content:space-between; padding:10px 15px; border-bottom:0.5px solid rgba(255,255,255,0.05); opacity:0.6;">
-                            <span>${alias}</span>
-                            <span style="font-size:12px; color:var(--text-secondary);">צפי ממוצע: ₪${aPastAvg.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
-                        </li>`;
-                    }
+                        if (aCur > 0) {
+                            const inst = getInstallmentInfo(alias);
+                            const instHint = inst ? `<span style="font-size:9px; background:var(--accent-blue); color:white; padding:2px 5px; border-radius:4px; margin-left:6px;">תשלום ${inst.n}/${inst.total}</span> ` : '';
+                            const instLine = inst ? `<div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">יתרה: ₪${inst.remainingAmount.toLocaleString(undefined, {maximumFractionDigits:0})} · נותרו ${inst.remainingCount} תשלומים</div>` : '';
+                            html += `
+                            <li style="display:flex; justify-content:space-between; padding:10px 15px; border-bottom:0.5px solid rgba(255,255,255,0.05); background:rgba(0,0,0,0.2);">
+                                <div><span>${recHint}${instHint}${alias}${recLabel}</span>${instLine}</div>
+                                <span style="font-weight:600;">₪${aCur.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+                            </li>`;
+                        } else {
+                            html += `
+                            <li style="display:flex; justify-content:space-between; padding:10px 15px; border-bottom:0.5px solid rgba(255,255,255,0.05); opacity:0.6;">
+                                <span>${alias}</span>
+                                <span style="font-size:12px; color:var(--text-secondary);">צפי ממוצע: ₪${aPastAvg.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+                            </li>`;
+                        }
+                    });
+                    html += `</ul>`;
                 });
-                html += `</ul>`;
-            });
+            }
 
             document.getElementById('monthlySubCats').innerHTML = html;
         }
@@ -1693,7 +1717,7 @@
             const mainSelect = document.getElementById('catMainSelect');
             mainSelect.innerHTML = '<option value="">-- בחר קטגוריה ראשית --</option>';
             Object.keys(categoriesData).forEach(cat => {
-                if(cat === 'הכנסות' || cat === 'הכנסה') return;
+                if(cat.startsWith('__') || cat === 'הכנסות' || cat === 'הכנסה') return;
                 mainSelect.innerHTML += `<option value="${cat}">${cat}</option>`;
             });
             document.getElementById('catSubSelect').style.display = 'none';
@@ -2127,7 +2151,9 @@
         function getUnclassified() {
             const known = new Set();
             for (const main in categoriesData) {
+                if (main.startsWith('__') || typeof categoriesData[main] !== 'object' || !categoriesData[main]) continue;
                 for (const sub in categoriesData[main]) {
+                    if (!Array.isArray(categoriesData[main][sub])) continue;
                     categoriesData[main][sub].forEach(a => known.add(a));
                 }
             }
@@ -2153,7 +2179,7 @@
         window.renderUnclassified = function() {
             const items = getUnclassified();
             window._unclassifiedItems = items;
-            const mains = Object.keys(categoriesData).filter(m => m !== 'הכנסות' && m !== 'הכנסה');
+            const mains = Object.keys(categoriesData).filter(m => !m.startsWith('__') && m !== 'הכנסות' && m !== 'הכנסה');
             const mainOptions = `<option value="">-- קטגוריה ראשית --</option>` + mains.map(m => `<option value="${escHtml(m)}">${escHtml(m)}</option>`).join('');
             let html = '';
             if (!items.length) {
