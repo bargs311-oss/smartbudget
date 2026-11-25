@@ -424,6 +424,16 @@
         let categoriesData = {};
         let cloudReady = false;      // נטען בהצלחה מהענן בסשן הזה – רק אז מותר לכתוב לענן
         let cloudShiftsData = null;  // משמרות מהענן (לחישוב שכר במכשיר שלא פתח את שעון הנוכחות)
+        // פירוט בתוך כינוי: עסקים שמחייבים כמה מנויים באותו שם (כמו Apple) – זיהוי כל מנוי לפי טווח סכום.
+        // { "Apple - מנויים": [{ label: "iCloud", min: 8, max: 12 }, ...] }  · נשמר בענן תחת __aliasDetails
+        let aliasDetails = readLocalJson('smartbudget_alias_details', {});
+        function txDetailLabel(tx) {
+            const rules = aliasDetails[getTxAlias(tx)];
+            if (!Array.isArray(rules) || !rules.length || tx.isRecurring) return '';
+            const a = Number(tx.amount) || 0;
+            const r = rules.find(x => a >= Number(x.min) && a <= Number(x.max));
+            return r ? r.label : 'אחר';
+        }
 
         // קטגוריות אמיתיות בלבד (בלי שדות מערכת שמתחילים ב-__)
         function sanitizeCategories(raw) {
@@ -516,6 +526,10 @@
                     localStorage.setItem('smartbudget_cloud_salaries', JSON.stringify(cloudSalaries));
                 }
                 if (cats.__shiftsData && typeof cats.__shiftsData === 'object') cloudShiftsData = cats.__shiftsData;
+                if (cats.__aliasDetails && typeof cats.__aliasDetails === 'object') {
+                    aliasDetails = cats.__aliasDetails;
+                    localStorage.setItem('smartbudget_alias_details', JSON.stringify(aliasDetails));
+                }
                 if (cats.__savingsTransferred && typeof cats.__savingsTransferred === 'object') {
                     savingsTransferredMap = Object.assign({}, savingsTransferredMap, cats.__savingsTransferred);
                 }
@@ -1191,10 +1205,11 @@
         }
 
         function txRowHtml(tx) {
-            const label = escHtml(tx.isRecurring ? `${tx.displayBusiness} · ${methodShortLabel(tx.method)}` : tx.displayBusiness);
+            const detail = txDetailLabel(tx);
+            const label = escHtml(detail || (tx.isRecurring ? `${tx.displayBusiness} · ${methodShortLabel(tx.method)}` : tx.displayBusiness));
             const amtCls = tx.type === 'הכנסה' ? 'row-amt amt-in' : 'row-amt';
             const inner = `
-                <span class="row-main"><span class="row-title">${label}</span><span class="row-sub">${escHtml(tx.dateStr)} ${chipsFor(tx)}</span></span>
+                <span class="row-main"><span class="row-title">${label}</span><span class="row-sub">${detail ? escHtml(getTxAlias(tx)) + ' · ' : ''}${escHtml(tx.dateStr)} ${chipsFor(tx)}</span></span>
                 <span class="${amtCls} num">${fmtMoney(tx.amount)}</span>`;
             if (tx.isEstimatedSalary) {
                 return `<li><a class="row" href="work.html">${inner}${ICONS.chevLeft}</a></li>`;
@@ -1289,13 +1304,17 @@
                 html += `<ul class="list plain">`;
                 names.forEach((name, i) => {
                     const g = grouped[name];
-                    if (g.txs.length === 1) { html += txRowHtml(g.txs[0]); return; }
+                    const hasDetail = g.txs.some(tx => txDetailLabel(tx));
+                    if (g.txs.length === 1 && !hasDetail) { html += txRowHtml(g.txs[0]); return; }
                     const gid = 'grp-' + i;
                     const open = expandedGroups.has(name);
+                    // מה כלול בקבוצה (למשל "iCloud · ביטוח שעון Apple")
+                    const parts = hasDetail ? [...new Set(g.txs.map(tx => txDetailLabel(tx)).filter(Boolean))].join(' · ') : '';
+                    const sub = parts ? escHtml(parts) : `${g.txs.length} רישומים`;
                     html += `
                     <li>
                         <button class="row group-toggle" aria-expanded="${open}" aria-controls="${gid}" onclick="toggleGroup(this, ${jsArg(name)})">
-                            <span class="row-main"><span class="row-title">${escHtml(name)}</span><span class="row-sub">${g.txs.length} רישומים${g.inst ? ' · <span class="chip chip-ink">תשלומים</span>' : ''}</span></span>
+                            <span class="row-main"><span class="row-title">${escHtml(name)}</span><span class="row-sub">${sub}${g.inst ? ' · <span class="chip chip-ink">תשלומים</span>' : ''}</span></span>
                             <span class="row-amt num ${mode === 'income' ? 'amt-in' : ''}">${fmtMoney(g.total)}</span>${ICONS.chevDown}
                         </button>
                         <ul class="plain group-body" id="${gid}" ${open ? '' : 'hidden'}>${g.txs.sort((a, b) => b.amount - a.amount).map(txRowHtml).join('')}</ul>
