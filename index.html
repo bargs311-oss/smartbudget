@@ -1267,23 +1267,39 @@
             // לפי קטגוריה
             if (mode !== 'income' && txs.length) {
                 calculateMonthlyData();
-                const bySub = {};
+                const bySub = {}, bySubTx = {};
                 let uncl = 0;
                 txs.forEach(tx => {
                     const m = aliasIndex[getTxAlias(tx)];
-                    if (m) { const k = m.main + '|' + m.sub; bySub[k] = (bySub[k] || 0) + tx.amount; }
+                    if (m) {
+                        const k = m.main + '|' + m.sub;
+                        bySub[k] = (bySub[k] || 0) + tx.amount;
+                        (bySubTx[k] = bySubTx[k] || []).push(tx);
+                    }
                     else if (!tx.isRecurring && tx.type !== 'תשלומים') uncl += tx.amount;
                 });
                 const subs = Object.keys(bySub).sort((a, b) => bySub[b] - bySub[a]);
                 if (subs.length || uncl > 0) {
-                    html += `<h3 class="section-sub">לפי קטגוריה <span>ממוצע בעבר</span></h3><div class="list">`;
-                    subs.forEach(k => {
+                    html += `<h3 class="section-sub">לפי קטגוריה <span>לחיצה לפירוט</span></h3><ul class="list plain">`;
+                    // כל קטגוריה נפתחת לרשימת העסקאות שלה החודש
+                    subs.forEach((k, i) => {
                         const [main, sub] = k.split('|');
                         const avg = (monthlyDataCache.pastSub[k] || 0) / (monthlyDataCache.pastCount || 1);
-                        html += `<div class="row"><span class="row-main"><span class="row-title">${escHtml(sub)}</span><span class="row-sub">${escHtml(shortCatName(main))} · בדרך כלל ${fmtMoney(avg)}</span></span><span class="row-amt num">${fmtMoney(bySub[k])}</span></div>`;
+                        const gid = 'cat-' + i;
+                        const gkey = 'cat:' + k;
+                        const open = expandedGroups.has(gkey);
+                        const list = bySubTx[k].slice().sort((a, b) => b.amount - a.amount);
+                        html += `
+                        <li>
+                            <button class="row group-toggle" aria-expanded="${open}" aria-controls="${gid}" onclick="toggleGroup(this, ${jsArg(gkey)})">
+                                <span class="row-main"><span class="row-title">${escHtml(sub)}</span><span class="row-sub">${escHtml(shortCatName(main))} · ${list.length} רישומים · בדרך כלל ${fmtMoney(avg)}</span></span>
+                                <span class="row-amt num">${fmtMoney(bySub[k])}</span>${ICONS.chevDown}
+                            </button>
+                            <ul class="plain group-body" id="${gid}" ${open ? '' : 'hidden'}>${list.map(txRowHtml).join('')}</ul>
+                        </li>`;
                     });
-                    if (uncl > 0) html += `<button class="row" onclick="openUnclassified()"><span class="row-main"><span class="row-title">לא מסווג</span><span class="row-sub">לחיצה כדי לשייך לקטגוריה</span></span><span class="row-amt num">${fmtMoney(uncl)}</span>${ICONS.chevLeft}</button>`;
-                    html += `</div>`;
+                    if (uncl > 0) html += `<li><button class="row" onclick="openUnclassified()"><span class="row-main"><span class="row-title">לא מסווג</span><span class="row-sub">לחיצה כדי לשייך לקטגוריה</span></span><span class="row-amt num">${fmtMoney(uncl)}</span>${ICONS.chevLeft}</button></li>`;
+                    html += `</ul>`;
                 }
             }
 
