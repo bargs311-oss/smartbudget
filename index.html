@@ -676,6 +676,31 @@
             return method || '';
         }
 
+        // תקופה של הוצאה קבועה: start / end בפורמט "YYYY-MM" (לא חובה). בלי start – תמיד; בלי end – ללא סוף.
+        function ymKey(ym) {
+            const m = /^(\d{4})-(\d{2})$/.exec(ym || '');
+            return m ? Number(m[1]) * 12 + Number(m[2]) : null;
+        }
+        function recurringActiveIn(item, key) {
+            const s = ymKey(item.start), e = ymKey(item.end);
+            return (s === null || key >= s) && (e === null || key <= e);
+        }
+        function fmtYm(ym) {
+            const m = /^(\d{4})-(\d{2})$/.exec(ym || '');
+            return m ? `${m[2]}/${m[1].slice(-2)}` : '';
+        }
+        // "כל חודש" / "כל חודש · 12/26–11/28 · נותרו 24 תשלומים" / "הסתיים ב-05/26"
+        function recurringPeriodText(item) {
+            const now = new Date();
+            const nowKey = now.getFullYear() * 12 + (now.getMonth() + 1);
+            const s = ymKey(item.start), e = ymKey(item.end);
+            if (s === null && e === null) return 'כל חודש';
+            if (e !== null && e < nowKey) return `הסתיים ב-${fmtYm(item.end)}`;
+            let txt = 'כל חודש · ' + (s !== null ? fmtYm(item.start) : '') + '–' + (e !== null ? fmtYm(item.end) : 'ללא סוף');
+            if (e !== null) txt += ` · נותרו ${e - Math.max(nowKey, s !== null ? s : nowKey) + 1} תשלומים`;
+            return txt;
+        }
+
         // הוצאות קבועות: הערכה לכל חודש שאין בו חיוב אמיתי לאותו כינוי.
         function injectRecurringCharges() {
             allTransactions = allTransactions.filter(tx => !tx.isRecurring);
@@ -704,6 +729,7 @@
                 const year = Math.floor((key - 1) / 12);
                 const month = ((key - 1) % 12) + 1;
                 recurringMonthly.forEach(item => {
+                    if (!recurringActiveIn(item, key)) return; // מחוץ לתקופה (התחלה / סיום)
                     if (realAliasMonths.has(item.alias + '|' + key)) return; // יש חיוב אמיתי – משתמשים בו
                     allTransactions.push({
                         id: `recurring-${item.id}-${year}-${month}`,
@@ -1533,13 +1559,15 @@
             } else {
                 html = `<div class="list">` + recurringMonthly.map((item, idx) => `
                     <div class="row">
-                        <span class="row-main"><span class="row-title">${escHtml(item.alias)}</span><span class="row-sub">${escHtml(item.method || '')} · כל חודש</span></span>
+                        <span class="row-main"><span class="row-title">${escHtml(item.alias)}</span><span class="row-sub">${escHtml(item.method || '')} · ${escHtml(recurringPeriodText(item))}</span></span>
                         <span class="row-amt num">${fmtMoney(item.amount)}</span>
                         <button class="icon-btn" onclick="editRecurringCharge(${idx})" aria-label="עריכת ${escHtml(item.alias)}">${ICONS.edit}</button>
                         <button class="icon-btn red" onclick="deleteRecurringCharge(${idx})" aria-label="הסרת ${escHtml(item.alias)}">${ICONS.trash}</button>
                     </div>`).join('') + `</div>`;
-                const total = recurringMonthly.reduce((a, r) => a + (Number(r.amount) || 0), 0);
-                html += `<p class="sheet-note" style="margin-top:12px;">סה״כ ${fmtMoney(total)} בחודש, נספר בסל "מחויב".</p>`;
+                const nowD = new Date();
+                const nowKey = nowD.getFullYear() * 12 + (nowD.getMonth() + 1);
+                const total = recurringMonthly.filter(r => recurringActiveIn(r, nowKey)).reduce((a, r) => a + (Number(r.amount) || 0), 0);
+                html += `<p class="sheet-note" style="margin-top:12px;">סה״כ ${fmtMoney(total)} החודש, נספר בסל "מחויב".</p>`;
             }
             document.getElementById('recurringList').innerHTML = html;
         };
@@ -1554,14 +1582,22 @@
                     { name: 'alias', label: 'שם ההוצאה (כמו בקטגוריות)', placeholder: 'לדוגמה: ארנונה', value: item ? item.alias : '', list: 'aliasOptions', required: true },
                     { name: 'amount', label: 'סכום כל חודש (₪)', type: 'number', inputmode: 'decimal', step: '0.01', value: item ? item.amount : '', required: true,
                       validate: v => (parseFloat(v) > 0 ? null : 'הסכום צריך להיות גדול מאפס') },
-                    { name: 'method', label: 'אמצעי תשלום', type: 'select', options: PAYMENT_METHODS, value: item ? item.method : 'הוראת קבע' }
+                    { name: 'method', label: 'אמצעי תשלום', type: 'select', options: PAYMENT_METHODS, value: item ? item.method : 'הוראת קבע' },
+                    { name: 'start', label: 'חיוב ראשון (לא חובה)', type: 'month', value: item && item.start ? item.start : '' },
+                    { name: 'end', label: 'חיוב אחרון (לא חובה – ריק = ללא סוף)', type: 'month', value: item && item.end ? item.end : '',
+                      validate: (v, all) => (v && all && all.start && v < all.start ? 'החיוב האחרון לפני החיוב הראשון' : null) }
                 ]
             });
+        }
+        function applyRecurringPeriod(item, v) {
+            if (/^\d{4}-\d{2}$/.test(v.start || '')) item.start = v.start; else delete item.start;
+            if (/^\d{4}-\d{2}$/.test(v.end || '')) item.end = v.end; else delete item.end;
+            return item;
         }
         window.addRecurringCharge = async function() {
             const v = await recurringDialog(null);
             if (!v) return;
-            recurringMonthly.push({ id: 'rec-' + Date.now(), alias: v.alias, amount: parseFloat(v.amount), method: v.method, type: 'קבועה' });
+            recurringMonthly.push(applyRecurringPeriod({ id: 'rec-' + Date.now(), alias: v.alias, amount: parseFloat(v.amount), method: v.method, type: 'קבועה' }, v));
             saveRecurring();
             renderRecurringManager();
         };
@@ -1571,6 +1607,7 @@
             const v = await recurringDialog(item);
             if (!v) return;
             item.alias = v.alias; item.amount = parseFloat(v.amount); item.method = v.method;
+            applyRecurringPeriod(item, v);
             saveRecurring();
             renderRecurringManager();
         };
