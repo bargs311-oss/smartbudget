@@ -214,7 +214,7 @@
                     const inp = form.querySelector('#sbf-' + i);
                     const v = inp.value.trim();
                     if (f.required && !v) { showErr(f.requiredMsg || `צריך למלא: ${f.label}`, inp); inp.focus(); return; }
-                    const err = f.validate ? f.validate(v) : null;
+                    const err = f.validate ? f.validate(v, vals) : null; // vals = השדות שכבר נבדקו (לבדיקות בין שדות)
                     if (err) { showErr(err, inp); inp.focus(); return; }
                     vals[f.name] = v;
                 }
